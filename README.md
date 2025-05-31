@@ -38,7 +38,7 @@ cd resell-assistant
 
 2. Install frontend dependencies:
 ```bash
-cd ClientApp
+cd "Resell Assistant/ClientApp"
 npm install
 ```
 
@@ -65,6 +65,42 @@ You'll need to configure API keys for marketplace access:
    - Amazon Product Advertising API
    - Facebook Marketplace (if available)
 
+## Architecture
+
+### Backend Structure
+- **Controllers**: RESTful API endpoints
+- **Services**: Business logic for marketplace integration and price analysis
+- **Models**: Data models for products, deals, and user portfolio
+- **Data**: Entity Framework context and database configuration
+
+### Frontend Structure
+- **React Components**: Modern, responsive UI components
+- **TypeScript**: Type-safe development
+- **Tailwind CSS**: Utility-first styling
+- **API Integration**: Axios-based API client
+
+## Key Features
+
+### Deal Analysis Algorithm
+The application uses a sophisticated scoring system to identify profitable deals:
+- Price comparison across multiple marketplaces
+- Historical price trend analysis
+- Market demand indicators
+- Seller motivation factors
+- Time-on-market analysis
+
+### Search Capabilities
+- Multi-marketplace search aggregation
+- Advanced filtering options
+- Real-time price monitoring
+- Custom search alerts
+
+### Portfolio Management
+- Purchase tracking
+- Profit/loss calculations
+- Performance analytics
+- Inventory management
+
 ## Contributing
 
 1. Fork the repository
@@ -78,4 +114,8 @@ MIT License - see LICENSE file for details
 
 ## Disclaimer
 
-This tool is for educational and research purposes. Always comply with marketplace terms of service and applicable laws.
+This tool is for educational and research purposes. Always comply with marketplace terms of service and applicable laws. Web scraping should be done responsibly and in accordance with robots.txt and rate limiting guidelines.
+
+## Support
+
+For questions, issues, or feature requests, please open an issue on GitHub.
