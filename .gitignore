@@ -273,3 +273,14 @@ yarn-error.log*
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Database files
+*.db-shm
+*.db-wal
+
+# React build output
+**/ClientApp/build/
+**/wwwroot/
+
+# Node modules
+**/node_modules/

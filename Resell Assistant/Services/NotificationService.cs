@@ -15,88 +15,72 @@ namespace Resell_Assistant.Services
             _configuration = configuration;
         }
 
-        public async Task SendDealAlertAsync(Deal deal, string email)
+        public async Task SendDealAlertAsync(Deal deal, SearchAlert alert)
         {
-            var subject = $"Great Deal Found: {deal.Product.Title}";
+            var product = await _context.Products.FindAsync(deal.ProductId);
+            if (product == null) return;
+
+            var subject = $"Deal Alert: {product.Title}";
             var body = $@"
-                <h2>Resell Opportunity Alert!</h2>
-                <h3>{deal.Product.Title}</h3>
-                <p><strong>Current Price:</strong> ${deal.Product.Price:F2}</p>
+                <h2>New Deal Found!</h2>
+                <h3>{product.Title}</h3>
+                <p><strong>Price:</strong> ${product.Price:F2}</p>
                 <p><strong>Estimated Sell Price:</strong> ${deal.EstimatedSellPrice:F2}</p>
                 <p><strong>Potential Profit:</strong> ${deal.PotentialProfit:F2}</p>
-                <p><strong>Deal Score:</strong> {deal.Score:F1}/100</p>
-                <p><strong>Marketplace:</strong> {deal.Product.Marketplace}</p>
-                <p><strong>Reasoning:</strong> {deal.Reasoning}</p>
-                <p><strong>Confidence Level:</strong> {deal.ConfidenceLevel:F1}%</p>
-                
-                {(string.IsNullOrEmpty(deal.Product.ProductUrl) ? "" : $"<p><a href='{deal.Product.ProductUrl}'>View Item</a></p>")}
-                
-                <p><em>Act quickly - good deals don't last long!</em></p>
-            ";
-
-            await SendEmailAsync(email, subject, body);
-        }
-
-        public async Task SendPriceDropAlertAsync(Product product, decimal oldPrice, string email)
-        {
-            var priceDropPercent = ((oldPrice - product.Price) / oldPrice) * 100;
-            var subject = $"Price Drop Alert: {product.Title}";
-            var body = $@"
-                <h2>Price Drop Detected!</h2>
-                <h3>{product.Title}</h3>
-                <p><strong>Old Price:</strong> ${oldPrice:F2}</p>
-                <p><strong>New Price:</strong> ${product.Price:F2}</p>
-                <p><strong>Price Drop:</strong> ${oldPrice - product.Price:F2} ({priceDropPercent:F1}%)</p>
+                <p><strong>Deal Score:</strong> {deal.DealScore}/100</p>
+                <p><strong>Confidence:</strong> {deal.Confidence}%</p>
                 <p><strong>Marketplace:</strong> {product.Marketplace}</p>
-                
-                {(string.IsNullOrEmpty(product.ProductUrl) ? "" : $"<p><a href='{product.ProductUrl}'>View Item</a></p>")}
-                
-                <p><em>This could be a great buying opportunity!</em></p>
+                <p><strong>Location:</strong> {product.Location}</p>
+                <p><strong>Reasoning:</strong> {deal.Reasoning}</p>
+                {(string.IsNullOrEmpty(product.Url) ? "" : $"<p><a href='{product.Url}'>View Product</a></p>")}
             ";
 
-            await SendEmailAsync(email, subject, body);
+            // In a real implementation, you would send to actual email address
+            // For now, just log the alert
+            Console.WriteLine($"Deal Alert: {subject}");
+            
+            // Update alert last triggered time
+            alert.LastTriggered = DateTime.UtcNow;
+            _context.SearchAlerts.Update(alert);
+            await _context.SaveChangesAsync();
         }
 
-        public async Task CheckAndSendAlertsAsync()
+        public async Task SendEmailAsync(string to, string subject, string body)
         {
-            // Get all active search alerts
-            var alerts = await _context.SearchAlerts
-                .Where(a => a.IsActive && !string.IsNullOrEmpty(a.EmailNotification))
-                .ToListAsync();
+            // Placeholder implementation
+            // In a real app, you would use SendGrid, SMTP, etc.
+            Console.WriteLine($"Email sent to {to}: {subject}");
+            await Task.CompletedTask;
+        }
 
-            foreach (var alert in alerts)
+        public async Task ProcessSearchAlertsAsync()
+        {
+            var activeAlerts = await GetActiveAlertsAsync();
+            var marketplaceService = new MarketplaceService(_context);
+            var priceAnalysisService = new PriceAnalysisService(_context);
+
+            foreach (var alert in activeAlerts)
             {
                 try
                 {
-                    // Check for new deals matching the alert criteria
-                    var matchingDeals = await _context.Deals
-                        .Include(d => d.Product)
-                        .Where(d => d.IsActive && 
-                                   d.IdentifiedDate > (alert.LastTriggered ?? DateTime.MinValue) &&
-                                   d.Product.Title.Contains(alert.SearchQuery))
-                        .Where(d => !alert.MaxPrice.HasValue || d.Product.Price <= alert.MaxPrice)
-                        .Where(d => !alert.MinProfit.HasValue || d.PotentialProfit >= alert.MinProfit)
-                        .ToListAsync();
-
-                    // Filter by marketplace if specified
-                    if (alert.Marketplaces.Any())
+                    // Search for products matching the alert
+                    var products = await marketplaceService.SearchProductsAsync(alert.SearchQuery, alert.Marketplace);
+                    
+                    foreach (var product in products)
                     {
-                        matchingDeals = matchingDeals
-                            .Where(d => alert.Marketplaces.Contains(d.Product.Marketplace))
-                            .ToList();
-                    }
-
-                    // Send notifications for new deals
-                    foreach (var deal in matchingDeals)
-                    {
-                        await SendDealAlertAsync(deal, alert.EmailNotification!);
-                    }
-
-                    // Update last triggered time
-                    if (matchingDeals.Any())
-                    {
-                        alert.LastTriggered = DateTime.UtcNow;
-                        await _context.SaveChangesAsync();
+                        // Check if this product meets the alert criteria
+                        if (await MeetsAlertCriteria(product, alert))
+                        {
+                            // Analyze the deal
+                            var deal = await priceAnalysisService.AnalyzeProductAsync(product);
+                            
+                            // If it's a good deal, send alert
+                            if (deal.DealScore >= 60) // Minimum threshold for alerts
+                            {
+                                await SendDealAlertAsync(deal, alert);
+                                break; // Only send one alert per search query per run
+                            }
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -106,48 +90,59 @@ namespace Resell_Assistant.Services
             }
         }
 
-        public async Task<bool> SendEmailAsync(string to, string subject, string body)
+        public async Task<List<SearchAlert>> GetActiveAlertsAsync()
         {
-            try
+            return await _context.SearchAlerts
+                .Where(a => a.IsActive)
+                .ToListAsync();
+        }
+
+        public async Task CreateAlertAsync(SearchAlert alert)
+        {
+            alert.CreatedAt = DateTime.UtcNow;
+            _context.SearchAlerts.Add(alert);
+            await _context.SaveChangesAsync();
+        }
+
+        public async Task UpdateAlertAsync(SearchAlert alert)
+        {
+            _context.SearchAlerts.Update(alert);
+            await _context.SaveChangesAsync();
+        }
+
+        public async Task DeleteAlertAsync(int alertId)
+        {
+            var alert = await _context.SearchAlerts.FindAsync(alertId);
+            if (alert != null)
             {
-                // In a production environment, you would integrate with an email service
-                // like SendGrid, AWS SES, or SMTP
-                
-                // For now, we'll just log the email content
-                Console.WriteLine($"EMAIL NOTIFICATION:");
-                Console.WriteLine($"To: {to}");
-                Console.WriteLine($"Subject: {subject}");
-                Console.WriteLine($"Body: {body}");
-                Console.WriteLine($"---");
-
-                // TODO: Implement actual email sending
-                // Example with SMTP:
-                /*
-                using var client = new SmtpClient();
-                client.Host = _configuration["Email:SmtpHost"];
-                client.Port = int.Parse(_configuration["Email:SmtpPort"]);
-                client.EnableSsl = true;
-                client.Credentials = new NetworkCredential(
-                    _configuration["Email:Username"], 
-                    _configuration["Email:Password"]);
-
-                var message = new MailMessage();
-                message.From = new MailAddress(_configuration["Email:FromAddress"]);
-                message.To.Add(to);
-                message.Subject = subject;
-                message.Body = body;
-                message.IsBodyHtml = true;
-
-                await client.SendMailAsync(message);
-                */
-
-                return true;
+                _context.SearchAlerts.Remove(alert);
+                await _context.SaveChangesAsync();
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error sending email: {ex.Message}");
+        }
+
+        private async Task<bool> MeetsAlertCriteria(Product product, SearchAlert alert)
+        {
+            // Check max price constraint
+            if (alert.MaxPrice.HasValue && product.Price > alert.MaxPrice.Value)
                 return false;
+
+            // Check marketplace constraint
+            if (!string.IsNullOrEmpty(alert.Marketplace) && 
+                !product.Marketplace.Equals(alert.Marketplace, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            // Check minimum profit constraint
+            if (alert.MinProfit.HasValue)
+            {
+                var priceAnalysisService = new PriceAnalysisService(_context);
+                var estimatedSellPrice = await priceAnalysisService.EstimateSellingPriceAsync(product);
+                var potentialProfit = estimatedSellPrice - (product.Price + product.ShippingCost);
+                
+                if (potentialProfit < alert.MinProfit.Value)
+                    return false;
             }
+
+            return true;
         }
     }
 }

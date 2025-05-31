@@ -7,27 +7,23 @@ namespace Resell_Assistant.Models
         public int Id { get; set; }
         
         [Required]
-        [MaxLength(200)]
+        [MaxLength(500)]
         public string SearchQuery { get; set; } = string.Empty;
-        
-        public decimal? MaxPrice { get; set; }
         
         public decimal? MinProfit { get; set; }
         
-        public string? Category { get; set; }
+        public decimal? MaxPrice { get; set; }
         
-        public string? Condition { get; set; }
-        
-        public string? Location { get; set; }
-        
-        public List<string> Marketplaces { get; set; } = new List<string>();
+        [MaxLength(100)]
+        public string? Marketplace { get; set; }
         
         public bool IsActive { get; set; } = true;
         
-        public DateTime CreatedDate { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         
         public DateTime? LastTriggered { get; set; }
         
-        public string? EmailNotification { get; set; }
+        [MaxLength(500)]
+        public string? Notes { get; set; }
     }
 }

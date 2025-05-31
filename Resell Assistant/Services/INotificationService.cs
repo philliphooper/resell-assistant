@@ -4,9 +4,12 @@ namespace Resell_Assistant.Services
 {
     public interface INotificationService
     {
-        Task SendDealAlertAsync(Deal deal, string email);
-        Task SendPriceDropAlertAsync(Product product, decimal oldPrice, string email);
-        Task CheckAndSendAlertsAsync();
-        Task<bool> SendEmailAsync(string to, string subject, string body);
+        Task SendDealAlertAsync(Deal deal, SearchAlert alert);
+        Task SendEmailAsync(string to, string subject, string body);
+        Task ProcessSearchAlertsAsync();
+        Task<List<SearchAlert>> GetActiveAlertsAsync();
+        Task CreateAlertAsync(SearchAlert alert);
+        Task UpdateAlertAsync(SearchAlert alert);
+        Task DeleteAlertAsync(int alertId);
     }
 }

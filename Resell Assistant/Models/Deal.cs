@@ -1,30 +1,34 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Resell_Assistant.Models
 {
     public class Deal
     {
         public int Id { get; set; }
         
+        [Required]
         public int ProductId { get; set; }
         
+        [Required]
         public decimal PotentialProfit { get; set; }
         
-        public decimal Score { get; set; } // Algorithm-calculated deal score (0-100)
+        [Required]
+        public decimal EstimatedSellPrice { get; set; }
         
-        public string? Reasoning { get; set; } // Why this is considered a good deal
+        [Required]
+        [Range(0, 100)]
+        public int DealScore { get; set; }
         
-        public DateTime IdentifiedDate { get; set; }
+        [Required]
+        [Range(0, 100)]
+        public int Confidence { get; set; }
         
-        public bool IsActive { get; set; } = true;
+        [MaxLength(1000)]
+        public string? Reasoning { get; set; }
         
-        public string? MarketComparison { get; set; } // JSON data of compared prices
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         
-        public int DaysOnMarket { get; set; }
-        
-        public decimal? EstimatedSellPrice { get; set; }
-        
-        public decimal? ConfidenceLevel { get; set; } // 0-100 confidence in the deal
-        
-        // Navigation properties
-        public Product Product { get; set; } = null!;
+        // Navigation property
+        public virtual Product? Product { get; set; }
     }
 }
