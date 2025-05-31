@@ -1,11 +1,17 @@
 using Microsoft.EntityFrameworkCore;
 using Resell_Assistant.Data;
 using Resell_Assistant.Services;
+using Resell_Assistant.Middleware;
+using Resell_Assistant.Filters;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews(options =>
+{
+    // Add global model validation filter
+    options.Filters.Add<ValidateModelStateAttribute>();
+});
 
 // Add Entity Framework
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -28,6 +34,9 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// Add global exception handling middleware (must be first)
+app.UseMiddleware<GlobalExceptionMiddleware>();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
