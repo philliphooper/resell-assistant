@@ -1,10 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
 using Resell_Assistant.Services;
 using Resell_Assistant.Models;
+using Resell_Assistant.DTOs;
+using Resell_Assistant.Filters;
 
 namespace Resell_Assistant.Controllers
-{
-    [ApiController]
+{    [ApiController]
     [Route("api/[controller]")]
     public class ProductsController : ControllerBase
     {
@@ -15,96 +16,61 @@ namespace Resell_Assistant.Controllers
         {
             _marketplaceService = marketplaceService;
             _priceAnalysisService = priceAnalysisService;
-        }
-
-        [HttpGet("search")]
-        public async Task<ActionResult<List<Product>>> SearchProducts(
-            [FromQuery] string query,
-            [FromQuery] string? marketplace = null)
+        }        [HttpGet("search")]
+        public async Task<ActionResult<List<Product>>> SearchProducts([FromQuery] ProductSearchRequest request)
         {
-            try
-            {
-                var products = await _marketplaceService.SearchProductsAsync(query, marketplace);
-                return Ok(products);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest($"Search failed: {ex.Message}");
-            }
-        }
-
-        [HttpGet("top-deals")]
+            var products = await _marketplaceService.SearchProductsAsync(request.Query, request.Marketplace);
+            return Ok(products);
+        }        [HttpGet("top-deals")]
         public async Task<ActionResult<List<Deal>>> GetTopDeals()
         {
-            try
-            {
-                var topDeals = await _marketplaceService.FindDealsAsync();
-                return Ok(topDeals);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest($"Failed to get top deals: {ex.Message}");
-            }
-        }
-
-        [HttpGet("{id}")]
+            var topDeals = await _marketplaceService.FindDealsAsync();
+            return Ok(topDeals);
+        }        [HttpGet("{id}")]
         public async Task<ActionResult<Product>> GetProduct(int id)
         {
-            try
+            if (id <= 0)
             {
-                var product = await _marketplaceService.GetProductByIdAsync(id);
-                if (product == null)
-                {
-                    return NotFound();
-                }
-                return Ok(product);
+                return BadRequest("Product ID must be a positive number");
             }
-            catch (Exception ex)
+            
+            var product = await _marketplaceService.GetProductByIdAsync(id);
+            if (product == null)
             {
-                return BadRequest($"Failed to get product: {ex.Message}");
+                return NotFound();
             }
-        }
-
-        [HttpPost("analyze")]
-        public async Task<ActionResult<Deal>> AnalyzeProduct([FromBody] Product product)
+            return Ok(product);
+        }        [HttpPost("analyze")]
+        public async Task<ActionResult<Deal>> AnalyzeProduct([FromBody] ProductAnalyzeRequest request)
         {
-            try
+            var product = await _marketplaceService.GetProductByIdAsync(request.ProductId);
+            if (product == null)
             {
-                var deal = await _priceAnalysisService.AnalyzeProductAsync(product);
-                return Ok(deal);
+                return NotFound("Product not found");
             }
-            catch (Exception ex)
-            {
-                return BadRequest($"Analysis failed: {ex.Message}");
-            }
-        }
-
-        [HttpGet("recent")]
+            
+            var deal = await _priceAnalysisService.AnalyzeProductAsync(product);
+            return Ok(deal);
+        }        [HttpGet("recent")]
         public async Task<ActionResult<List<Product>>> GetRecentProducts([FromQuery] int count = 10)
         {
-            try
+            if (count <= 0 || count > 1000)
             {
-                var products = await _marketplaceService.GetRecentProductsAsync(count);
-                return Ok(products);
+                return BadRequest("Count must be between 1 and 1000");
             }
-            catch (Exception ex)
-            {
-                return BadRequest($"Failed to get recent products: {ex.Message}");
-            }
-        }
-
-        [HttpGet("{id}/price-history")]
+            
+            var products = await _marketplaceService.GetRecentProductsAsync(count);
+            return Ok(products);
+        }        [HttpGet("{id}/price-history")]
         public async Task<ActionResult<List<PriceHistory>>> GetPriceHistory(int id)
         {
-            try
+            if (id <= 0)
             {
-                var priceHistory = await _priceAnalysisService.GetPriceHistoryAsync(id);
-                return Ok(priceHistory);
+                return BadRequest("Product ID must be a positive number");
             }
-            catch (Exception ex)
-            {
-                return BadRequest($"Failed to get price history: {ex.Message}");
-            }
+            
+            var priceHistory = await _priceAnalysisService.GetPriceHistoryAsync(id);
+            return Ok(priceHistory);
         }
     }
 }
