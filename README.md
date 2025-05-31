@@ -26,7 +26,40 @@ A comprehensive web application for finding profitable resale opportunities by a
 
 - .NET 9 SDK
 - Node.js 18+
-- npm or yarn
+- npm
+
+### Quick Start
+
+The easiest way to start the application is using the provided startup scripts:
+
+**For Windows:**
+```bash
+start-dev.bat
+```
+
+**For Linux/Mac:**
+```bash
+chmod +x start-dev.sh
+./start-dev.sh
+```
+
+**Or manually:**
+```bash
+cd "Resell Assistant"
+dotnet run
+```
+
+This single command will:
+1. Start the .NET backend on ports 5000 (HTTP) and 5001 (HTTPS)
+2. Automatically start the React frontend on port 3000
+3. Configure proxy routing between frontend and backend
+
+### How It Works
+
+- **Backend**: .NET Web API serves on https://localhost:5001
+- **Frontend**: React dev server runs on http://localhost:3000
+- **Communication**: React proxies API calls to the .NET backend
+- **Access**: Open https://localhost:5001 in your browser (the .NET app will proxy to React)
 
 ### Installation
 

@@ -47,6 +47,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+
 app.UseRouting();
 
 // Use CORS
@@ -63,7 +64,15 @@ app.MapControllerRoute(
     name: "default",
     pattern: "{controller}/{action=Index}/{id?}");
 
-// Serve React app for all non-API routes
-app.MapFallbackToFile("index.html");
+// Configure SPA
+app.UseSpa(spa =>
+{
+    spa.Options.SourcePath = "ClientApp";
+    
+    if (app.Environment.IsDevelopment())
+    {
+        spa.UseProxyToSpaDevelopmentServer("http://localhost:3000");
+    }
+});
 
 app.Run();

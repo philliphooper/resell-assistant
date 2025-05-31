@@ -8,6 +8,7 @@
     <SpaRoot>ClientApp\</SpaRoot>
     <SpaProxyServerUrl>http://localhost:3000</SpaProxyServerUrl>
     <SpaProxyLaunchCommand>npm start</SpaProxyLaunchCommand>
+    <DefaultItemExcludes>$(DefaultItemExcludes);$(SpaRoot)node_modules\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -40,7 +41,7 @@
     <Exec WorkingDirectory="$(SpaRoot)" Command="npm install" />
   </Target>
 
-  <Target Name="PublishRunWebpack" AfterTargets="ComputeFilesToPublish">
+  <Target Name="PublishRunWebpack" AfterTargets="Publish">
     <!-- As part of publishing, ensure the JS resources are freshly built in production mode -->
     <Exec WorkingDirectory="$(SpaRoot)" Command="npm install" />
     <Exec WorkingDirectory="$(SpaRoot)" Command="npm run build" />
