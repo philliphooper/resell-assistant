@@ -14,36 +14,26 @@ namespace Resell_Assistant.Models
         public string? Description { get; set; }
         
         [Required]
-        public string ExternalId { get; set; } = string.Empty;
-        
-        [Required]
-        public string Marketplace { get; set; } = string.Empty; // eBay, Amazon, Facebook, etc.
-        
         public decimal Price { get; set; }
         
-        public string? ImageUrl { get; set; }
+        public decimal ShippingCost { get; set; }
         
-        public string? ProductUrl { get; set; }
+        [Required]
+        [MaxLength(100)]
+        public string Marketplace { get; set; } = string.Empty;
         
-        public string? Category { get; set; }
-        
+        [MaxLength(50)]
         public string? Condition { get; set; }
         
+        [MaxLength(200)]
         public string? Location { get; set; }
         
-        public string? Seller { get; set; }
+        [MaxLength(1000)]
+        public string? Url { get; set; }
         
-        public int? ViewCount { get; set; }
+        [MaxLength(1000)]
+        public string? ImageUrl { get; set; }
         
-        public int? WatchCount { get; set; }
-        
-        public DateTime DateListed { get; set; }
-        
-        public DateTime DateUpdated { get; set; }
-        
-        public bool IsActive { get; set; } = true;
-        
-        // Navigation properties
-        public ICollection<PriceHistory> PriceHistory { get; set; } = new List<PriceHistory>();
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 }

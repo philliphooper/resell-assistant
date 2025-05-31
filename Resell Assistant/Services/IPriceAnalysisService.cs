@@ -4,11 +4,11 @@ namespace Resell_Assistant.Services
 {
     public interface IPriceAnalysisService
     {
-        Task<List<Deal>> AnalyzeDealsAsync();
-        Task<Deal?> AnalyzeSingleProductAsync(Product product);
-        Task<decimal> CalculateDealScoreAsync(Product product, List<Product> similarProducts);
-        Task<decimal> EstimateSellPriceAsync(Product product);
-        Task<List<Product>> GetTopDealsAsync(int count = 10);
-        Task<decimal> CalculateProfitMarginAsync(decimal buyPrice, decimal sellPrice, decimal fees = 0);
+        Task<Deal> AnalyzeProductAsync(Product product);
+        Task<List<Deal>> AnalyzeProductsAsync(List<Product> products);
+        Task<decimal> EstimateSellingPriceAsync(Product product);
+        Task<int> CalculateDealScoreAsync(Product product, decimal estimatedSellPrice);
+        Task AddPriceHistoryAsync(int productId, decimal price, string marketplace);
+        Task<List<PriceHistory>> GetPriceHistoryAsync(int productId);
     }
 }

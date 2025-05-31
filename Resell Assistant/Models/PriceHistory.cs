@@ -1,18 +1,24 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Resell_Assistant.Models
 {
     public class PriceHistory
     {
         public int Id { get; set; }
         
+        [Required]
         public int ProductId { get; set; }
         
+        [Required]
         public decimal Price { get; set; }
         
-        public DateTime Date { get; set; }
+        [Required]
+        [MaxLength(100)]
+        public string Marketplace { get; set; } = string.Empty;
         
-        public string? Source { get; set; } // Which marketplace or scraper
+        public DateTime RecordedAt { get; set; } = DateTime.UtcNow;
         
-        // Navigation properties
-        public Product Product { get; set; } = null!;
+        // Navigation property
+        public virtual Product? Product { get; set; }
     }
 }

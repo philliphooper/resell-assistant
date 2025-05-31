@@ -1,36 +1,35 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Resell_Assistant.Models
 {
     public class UserPortfolio
     {
         public int Id { get; set; }
         
+        [Required]
         public int ProductId { get; set; }
         
+        [Required]
         public decimal PurchasePrice { get; set; }
-        
-        public DateTime PurchaseDate { get; set; }
         
         public decimal? SellPrice { get; set; }
         
+        [Required]
+        public DateTime PurchaseDate { get; set; }
+        
         public DateTime? SellDate { get; set; }
         
-        public decimal? Profit { get; set; }
-        
+        [Required]
+        [MaxLength(50)]
         public string Status { get; set; } = "Purchased"; // Purchased, Listed, Sold
         
+        [MaxLength(1000)]
         public string? Notes { get; set; }
         
-        public string? PurchaseLocation { get; set; }
+        // Calculated property for profit
+        public decimal? Profit => SellPrice.HasValue ? SellPrice.Value - PurchasePrice : null;
         
-        public string? SellLocation { get; set; }
-        
-        public decimal? ShippingCost { get; set; }
-        
-        public decimal? SellingFees { get; set; }
-        
-        public int? DaysToSell { get; set; }
-        
-        // Navigation properties
-        public Product Product { get; set; } = null!;
+        // Navigation property
+        public virtual Product? Product { get; set; }
     }
 }

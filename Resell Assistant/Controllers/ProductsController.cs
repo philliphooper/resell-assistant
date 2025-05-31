@@ -20,23 +20,11 @@ namespace Resell_Assistant.Controllers
         [HttpGet("search")]
         public async Task<ActionResult<List<Product>>> SearchProducts(
             [FromQuery] string query,
-            [FromQuery] string? marketplace = null,
-            [FromQuery] decimal? maxPrice = null,
-            [FromQuery] string? category = null)
+            [FromQuery] string? marketplace = null)
         {
             try
             {
-                List<Product> products;
-                
-                if (string.IsNullOrEmpty(marketplace))
-                {
-                    products = await _marketplaceService.SearchAllMarketplacesAsync(query, maxPrice, category);
-                }
-                else
-                {
-                    products = await _marketplaceService.SearchProductsAsync(query, marketplace, maxPrice, category);
-                }
-
+                var products = await _marketplaceService.SearchProductsAsync(query, marketplace);
                 return Ok(products);
             }
             catch (Exception ex)
@@ -46,11 +34,11 @@ namespace Resell_Assistant.Controllers
         }
 
         [HttpGet("top-deals")]
-        public async Task<ActionResult<List<Product>>> GetTopDeals([FromQuery] int count = 10)
+        public async Task<ActionResult<List<Deal>>> GetTopDeals()
         {
             try
             {
-                var topDeals = await _priceAnalysisService.GetTopDealsAsync(count);
+                var topDeals = await _marketplaceService.FindDealsAsync();
                 return Ok(topDeals);
             }
             catch (Exception ex)
@@ -64,9 +52,12 @@ namespace Resell_Assistant.Controllers
         {
             try
             {
-                // This would need to be implemented in the marketplace service
-                // For now, return NotFound
-                return NotFound();
+                var product = await _marketplaceService.GetProductByIdAsync(id);
+                if (product == null)
+                {
+                    return NotFound();
+                }
+                return Ok(product);
             }
             catch (Exception ex)
             {
@@ -79,11 +70,7 @@ namespace Resell_Assistant.Controllers
         {
             try
             {
-                var deal = await _priceAnalysisService.AnalyzeSingleProductAsync(product);
-                if (deal == null)
-                {
-                    return BadRequest("Product does not appear to be a good deal");
-                }
+                var deal = await _priceAnalysisService.AnalyzeProductAsync(product);
                 return Ok(deal);
             }
             catch (Exception ex)
@@ -92,18 +79,31 @@ namespace Resell_Assistant.Controllers
             }
         }
 
-        [HttpGet("similar/{productId}")]
-        public async Task<ActionResult<List<Product>>> GetSimilarProducts(int productId)
+        [HttpGet("recent")]
+        public async Task<ActionResult<List<Product>>> GetRecentProducts([FromQuery] int count = 10)
         {
             try
             {
-                // Would need to get product first, then find similar ones
-                // Implementation would go here
-                return Ok(new List<Product>());
+                var products = await _marketplaceService.GetRecentProductsAsync(count);
+                return Ok(products);
             }
             catch (Exception ex)
             {
-                return BadRequest($"Failed to get similar products: {ex.Message}");
+                return BadRequest($"Failed to get recent products: {ex.Message}");
+            }
+        }
+
+        [HttpGet("{id}/price-history")]
+        public async Task<ActionResult<List<PriceHistory>>> GetPriceHistory(int id)
+        {
+            try
+            {
+                var priceHistory = await _priceAnalysisService.GetPriceHistoryAsync(id);
+                return Ok(priceHistory);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest($"Failed to get price history: {ex.Message}");
             }
         }
     }
