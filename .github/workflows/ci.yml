@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore "Resell Assistant.sln"
+
+      - name: Build
+        run: dotnet build "Resell Assistant.sln" --configuration Release --no-restore
+
+      - name: Run tests
+        run: dotnet test "Resell Assistant.Tests/Resell Assistant.Tests.csproj" --configuration Release --no-build --logger "trx;LogFileName=test_results.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: Resell Assistant.Tests/TestResults/test_results.trx
+
+      - name: Publish (Release build)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: dotnet publish "Resell Assistant/Resell Assistant.csproj" --configuration Release --output publish-test
