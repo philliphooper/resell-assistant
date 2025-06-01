@@ -5,7 +5,7 @@ using Resell_Assistant.Models;
 /// <summary>
 /// Interface for Facebook Marketplace integration service
 /// </summary>
-public interface IFacebookMarketplaceService
+public interface IFacebookMarketplaceService : IDisposable
 {
     /// <summary>
     /// Search for products on Facebook Marketplace

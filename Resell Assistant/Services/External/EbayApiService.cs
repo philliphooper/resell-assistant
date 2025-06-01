@@ -24,11 +24,10 @@ public class EbayApiService : IEbayApiService
     {
         _settings = settings.Value;
         _logger = logger;
-        
-        // Initialize RestClient with base URL
+          // Initialize RestClient with base URL and reduced timeout for better responsiveness
         var options = new RestClientOptions(_settings.BaseUrl)
         {
-            Timeout = TimeSpan.FromSeconds(_settings.TimeoutSeconds)
+            Timeout = TimeSpan.FromSeconds(Math.Min(_settings.TimeoutSeconds, 5)) // Cap at 5 seconds for dashboard responsiveness
         };
         _client = new RestClient(options);
         
@@ -299,11 +298,10 @@ public class EbayApiService : IEbayApiService
     /// Refresh OAuth access token using client credentials flow
     /// </summary>
     private async Task RefreshAccessTokenAsync()
-    {
-        try
+    {        try
         {
             var tokenClient = new RestClient(_settings.OAuthUrl);
-            var request = new RestRequest("/oauth/api_scope", Method.Post);
+            var request = new RestRequest("/identity/v1/oauth2/token", Method.Post);
             
             // Client credentials for OAuth 2.0
             var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_settings.ClientId}:{_settings.ClientSecret}"));
@@ -379,9 +377,7 @@ public class EbayApiService : IEbayApiService
     /// </summary>
     private Product? ConvertToProduct(EbayItemSummary? item)
     {
-        if (item == null) return null;
-
-        return new Product
+        if (item == null) return null;        return new Product
         {
             Id = 0, // Will be set by database
             Title = item.Title ?? "Unknown Item",
@@ -393,6 +389,9 @@ public class EbayApiService : IEbayApiService
             Condition = item.Condition ?? "Unknown",
             Location = "", // Location not typically in search results
             Url = item.ItemWebUrl ?? "",
+            ExternalId = item.ItemId ?? "",
+            IsExternalListing = true,
+            ExternalUpdatedAt = DateTime.UtcNow,
             CreatedAt = DateTime.UtcNow
         };
     }    /// <summary>
@@ -400,9 +399,7 @@ public class EbayApiService : IEbayApiService
     /// </summary>
     private Product? ConvertToProduct(EbayItemDetails? item)
     {
-        if (item == null) return null;
-
-        return new Product
+        if (item == null) return null;        return new Product
         {
             Id = 0, // Will be set by database
             Title = item.Title ?? "Unknown Item",
@@ -414,6 +411,9 @@ public class EbayApiService : IEbayApiService
             Condition = item.Condition ?? "Unknown",
             Location = "", // Location details would need to be added to eBay API models
             Url = item.ItemWebUrl ?? "",
+            ExternalId = item.ItemId ?? "",
+            IsExternalListing = true,
+            ExternalUpdatedAt = DateTime.UtcNow,
             CreatedAt = DateTime.UtcNow
         };
     }

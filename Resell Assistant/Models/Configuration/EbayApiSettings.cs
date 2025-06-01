@@ -28,7 +28,7 @@ public class EbayApiSettings
     /// <summary>
     /// OAuth URL for token generation
     /// </summary>
-    public string OAuthUrl { get; set; } = "https://auth.sandbox.ebay.com/oauth/api_scope";
+    public string OAuthUrl { get; set; } = "https://api.sandbox.ebay.com";
 
     /// <summary>
     /// Rate limiting: maximum calls per second

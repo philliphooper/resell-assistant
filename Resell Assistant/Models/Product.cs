@@ -34,11 +34,20 @@ namespace Resell_Assistant.Models
         [MaxLength(1000, ErrorMessage = "URL cannot exceed 1000 characters")]
         [Url(ErrorMessage = "Please provide a valid URL")]
         public string? Url { get; set; }
-        
-        [MaxLength(1000, ErrorMessage = "Image URL cannot exceed 1000 characters")]
+          [MaxLength(1000, ErrorMessage = "Image URL cannot exceed 1000 characters")]
         [Url(ErrorMessage = "Please provide a valid image URL")]
         public string? ImageUrl { get; set; }
         
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        
+        // External API integration properties
+        public DateTime? UpdatedAt { get; set; }
+        
+        [MaxLength(100, ErrorMessage = "External ID cannot exceed 100 characters")]
+        public string? ExternalId { get; set; }
+        
+        public bool IsExternalListing { get; set; } = false;
+        
+        public DateTime? ExternalUpdatedAt { get; set; }
     }
 }

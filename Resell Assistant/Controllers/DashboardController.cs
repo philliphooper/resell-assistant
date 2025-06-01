@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Resell_Assistant.Data;
 using Resell_Assistant.Models;
+using Resell_Assistant.Services;
 
 namespace Resell_Assistant.Controllers
 {
@@ -10,18 +11,108 @@ namespace Resell_Assistant.Controllers
     public class DashboardController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IMarketplaceService _marketplaceService;
+        private readonly ILogger<DashboardController> _logger;
 
-        public DashboardController(ApplicationDbContext context)
+        public DashboardController(
+            ApplicationDbContext context, 
+            IMarketplaceService marketplaceService,
+            ILogger<DashboardController> logger)
         {
             _context = context;
+            _marketplaceService = marketplaceService;
+            _logger = logger;
         }        [HttpGet("stats")]
         public async Task<ActionResult<object>> GetDashboardStats()
         {
             try
             {
-                // Get counts
-                var totalProducts = await _context.Products.CountAsync();
+                _logger.LogInformation("Fetching dashboard stats including live marketplace data");
+
+                // Get counts from local database
+                var localProducts = await _context.Products.CountAsync();
                 var totalDeals = await _context.Deals.CountAsync();
+
+                // Fetch live marketplace data with timeout and parallel processing
+                var liveProducts = new List<Product>();
+                var searchQueries = new[] { "iPhone", "Samsung", "PlayStation", "Xbox", "MacBook" };
+                
+                // Use timeout for external API calls to prevent dashboard timeout
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3)); // 3-second timeout for external calls
+                
+                // Execute searches in parallel with timeout handling
+                var searchTasks = searchQueries.Select(async query =>
+                {
+                    try
+                    {
+                        // Use Task.Run with timeout to prevent hanging
+                        var searchTask = Task.Run(async () =>
+                        {
+                            return await _marketplaceService.SearchProductsAsync(query, null, 3, 3); // Reduced limits for faster response
+                        });
+                        
+                        var searchResults = await searchTask.WaitAsync(TimeSpan.FromSeconds(2)); // 2-second timeout per query
+                        
+                        // Only count external listings to avoid double-counting local products
+                        var externalProducts = searchResults.Where(p => p.IsExternalListing).ToList();
+                        _logger.LogDebug("Found {Count} external products for query: {Query}", externalProducts.Count, query);
+                        return externalProducts;
+                    }
+                    catch (TimeoutException)
+                    {
+                        _logger.LogWarning("Search timeout for query: {Query} (using fallback data)", query);
+                        return new List<Product>();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        _logger.LogWarning("Search cancelled for query: {Query} (using fallback data)", query);
+                        return new List<Product>();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to fetch live data for query: {Query}", query);
+                        return new List<Product>();
+                    }
+                });
+
+                // Execute with semaphore to limit concurrent API calls (prevent rate limiting)
+                var semaphore = new SemaphoreSlim(2, 2); // Max 2 concurrent calls
+                var throttledTasks = searchTasks.Select(async task =>
+                {
+                    await semaphore.WaitAsync(cts.Token);
+                    try
+                    {
+                        return await task;
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                });
+
+                try
+                {
+                    var searchResults = await Task.WhenAll(throttledTasks);
+                    foreach (var result in searchResults)
+                    {
+                        liveProducts.AddRange(result);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogWarning("Dashboard external API calls timed out after 3 seconds, using available data");
+                }
+
+                // Remove duplicates based on external ID
+                var uniqueLiveProducts = liveProducts
+                    .GroupBy(p => p.ExternalId)
+                    .Select(g => g.First())
+                    .ToList();
+
+                var totalProducts = localProducts + uniqueLiveProducts.Count;
+
+                _logger.LogInformation("Dashboard stats: {LocalProducts} local + {LiveProducts} live = {TotalProducts} total products", 
+                    localProducts, uniqueLiveProducts.Count, totalProducts);
 
                 // Calculate total profit from deals
                 var totalProfit = await _context.Deals.SumAsync(d => d.PotentialProfit);
@@ -31,12 +122,33 @@ namespace Resell_Assistant.Controllers
                     ? await _context.Deals.AverageAsync(d => d.DealScore)
                     : 0;
 
-                // Find top marketplace
-                var topMarketplace = await _context.Products
+                // Find top marketplace (including live data)
+                var marketplaceCounts = new Dictionary<string, int>();
+                
+                // Count local products by marketplace
+                var localMarketplaceCounts = await _context.Products
                     .GroupBy(p => p.Marketplace)
-                    .OrderByDescending(g => g.Count())
-                    .Select(g => g.Key)
-                    .FirstOrDefaultAsync() ?? "N/A";
+                    .Select(g => new { Marketplace = g.Key, Count = g.Count() })
+                    .ToListAsync();
+
+                foreach (var item in localMarketplaceCounts)
+                {
+                    marketplaceCounts[item.Marketplace] = item.Count;
+                }
+
+                // Add live product counts
+                var liveMarketplaceCounts = uniqueLiveProducts
+                    .GroupBy(p => p.Marketplace)
+                    .Select(g => new { Marketplace = g.Key, Count = g.Count() });
+
+                foreach (var item in liveMarketplaceCounts)
+                {
+                    marketplaceCounts[item.Marketplace] = marketplaceCounts.GetValueOrDefault(item.Marketplace, 0) + item.Count;
+                }
+
+                var topMarketplace = marketplaceCounts.Any() 
+                    ? marketplaceCounts.OrderByDescending(x => x.Value).First().Key 
+                    : "N/A";
 
                 // Count recent deals (last 7 days)
                 var oneWeekAgo = DateTime.UtcNow.AddDays(-7);
@@ -57,8 +169,11 @@ namespace Resell_Assistant.Controllers
                     .Where(p => p.Status != "Sold")
                     .SumAsync(p => (decimal?)p.PurchasePrice) ?? 0;
 
-                // Get top categories from product titles (using simple keyword matching)
-                var allProducts = await _context.Products.Select(p => p.Title).ToListAsync();
+                // Get top categories from both local and live product titles
+                var allLocalProducts = await _context.Products.Select(p => p.Title).ToListAsync();
+                var allLiveProductTitles = uniqueLiveProducts.Select(p => p.Title).ToList();
+                var allProductTitles = allLocalProducts.Concat(allLiveProductTitles).ToList();
+
                 var categoryKeywords = new Dictionary<string, string[]>
                 {
                     { "Electronics", new[] { "iPhone", "iPad", "MacBook", "PlayStation", "Switch", "Samsung", "Apple", "Watch", "AirPods" } },
@@ -69,11 +184,11 @@ namespace Resell_Assistant.Controllers
                 };
 
                 var categoryCount = new Dictionary<string, int>();
-                foreach (var product in allProducts)
+                foreach (var productTitle in allProductTitles)
                 {
                     foreach (var category in categoryKeywords)
                     {
-                        if (category.Value.Any(keyword => product.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+                        if (category.Value.Any(keyword => productTitle.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
                         {
                             categoryCount[category.Key] = categoryCount.GetValueOrDefault(category.Key, 0) + 1;
                             break; // Only count each product in one category
@@ -85,7 +200,7 @@ namespace Resell_Assistant.Controllers
                     .OrderByDescending(c => c.Value)
                     .Take(5)
                     .Select(c => c.Key)
-                    .ToList();                // Get recent deals with product details
+                    .ToList();;                // Get recent deals with product details
                 var recentDeals = await _context.Deals
                     .Include(d => d.Product)
                     .Where(d => d.CreatedAt > oneWeekAgo && d.Product != null)
@@ -130,7 +245,11 @@ namespace Resell_Assistant.Controllers
                     portfolioValue = Math.Round(portfolioValue, 2),
                     weeklyProfit = Math.Round(weeklyProfit, 2),
                     topCategories,
-                    recentDeals
+                    recentDeals,
+                    // Additional live marketplace metrics
+                    liveProductsCount = uniqueLiveProducts.Count,
+                    localProductsCount = localProducts,
+                    marketplaceCounts = marketplaceCounts.OrderByDescending(x => x.Value).Take(5).ToDictionary(x => x.Key, x => x.Value)
                 };
 
                 return Ok(stats);
@@ -152,10 +271,10 @@ namespace Resell_Assistant.Controllers
                 // Get eBay configuration from appsettings
                 var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
                 
-                var clientId = configuration["ApiKeys:EbayClientId"];
-                var clientSecret = configuration["ApiKeys:EbayClientSecret"];
-                var environment = configuration["ApiKeys:EbayEnvironment"] ?? "sandbox";
-                var baseUrl = configuration["ApiKeys:EbayBaseUrl"] ?? "https://api.sandbox.ebay.com";
+                var clientId = configuration["ApiKeys:ClientId"];
+                var clientSecret = configuration["ApiKeys:ClientSecret"];
+                var environment = configuration["ApiKeys:Environment"] ?? "sandbox";
+                var baseUrl = configuration["ApiKeys:BaseUrl"] ?? "https://api.sandbox.ebay.com";
 
                 var result = new
                 {
