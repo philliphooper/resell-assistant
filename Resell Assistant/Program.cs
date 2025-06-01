@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Resell_Assistant.Data;
 using Resell_Assistant.Services;
+using Resell_Assistant.Services.External;
+using Resell_Assistant.Models.Configuration;
 using Resell_Assistant.Middleware;
 using Resell_Assistant.Filters;
 
@@ -21,6 +23,15 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddScoped<IMarketplaceService, MarketplaceService>();
 builder.Services.AddScoped<IPriceAnalysisService, PriceAnalysisService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+
+// Configure eBay API settings
+builder.Services.Configure<Resell_Assistant.Models.Configuration.EbayApiSettings>(
+    builder.Configuration.GetSection("ApiKeys"));
+
+// Register eBay API service
+builder.Services.AddScoped<IEbayApiService, EbayApiService>();
+// Register Facebook Marketplace API service
+builder.Services.AddScoped<IFacebookMarketplaceService, FacebookMarketplaceService>();
 
 // Add CORS policy for API calls
 builder.Services.AddCors(options =>
