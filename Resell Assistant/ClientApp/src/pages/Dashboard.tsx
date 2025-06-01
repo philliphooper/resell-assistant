@@ -73,9 +73,7 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* API Status */}
-      {renderApiStatus()}
-
-      {/* Stats Cards */}
+      {renderApiStatus()}      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statsLoading ? (
           <div className="col-span-full">
@@ -112,7 +110,7 @@ const Dashboard: React.FC = () => {
               color="green"
             />
             <StatsCard
-              title="Potential Profit"
+              title="Total Profit"
               value={formatCurrency(stats.totalProfit)}
               icon={
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -136,28 +134,87 @@ const Dashboard: React.FC = () => {
         ) : null}
       </div>
 
-      {/* Quick Stats */}
+      {/* Enhanced Stats Section */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Top Marketplace</h3>
-            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.topMarketplace}</p>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Most active platform</p>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Portfolio Value</h3>
+            <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{formatCurrency(stats.portfolioValue)}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Current investments</p>
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Recent Deals</h3>
-            <p className="text-2xl font-bold text-green-600">{stats.recentDealsCount}</p>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Weekly Profit</h3>
+            <p className="text-2xl font-bold text-green-600 dark:text-green-400">{formatCurrency(stats.weeklyProfit)}</p>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Last 7 days</p>
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Success Rate</h3>
-            <p className="text-2xl font-bold text-purple-600">
-              {stats.totalDeals > 0 ? Math.round((stats.recentDealsCount / stats.totalDeals) * 100) : 0}%
-            </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Deal conversion</p>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Active Alerts</h3>
+            <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">{stats.activeAlerts}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Monitoring deals</p>
           </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Top Categories</h3>
+            <div className="space-y-1">
+              {stats.topCategories.slice(0, 3).map((category, index) => (
+                <div key={category} className="flex items-center">
+                  <span className={`inline-block w-2 h-2 rounded-full mr-2 ${
+                    index === 0 ? 'bg-blue-500' : index === 1 ? 'bg-green-500' : 'bg-yellow-500'
+                  }`}></span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{category}</span>
+                </div>
+              ))}
+              {stats.topCategories.length === 0 && (
+                <span className="text-sm text-gray-500 dark:text-gray-400">No categories found</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}      {/* Recent Deals Summary */}
+      {stats && stats.recentDeals && stats.recentDeals.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Deals</h3>
+            <span className="text-sm text-gray-600 dark:text-gray-400">Last 7 days</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {stats.recentDeals.slice(0, 3).map((deal) => (
+              <div key={deal.id} className="p-4 border border-gray-200 dark:border-gray-600 rounded-lg">
+                <h4 className="font-medium text-gray-900 dark:text-white text-sm mb-2 truncate">
+                  {deal.product?.title || 'Unknown Product'}
+                </h4>
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-600 dark:text-gray-400">Profit:</span>
+                    <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                      {formatCurrency(deal.potentialProfit)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-600 dark:text-gray-400">Score:</span>
+                    <span className="text-sm font-medium text-purple-600 dark:text-purple-400">
+                      {deal.dealScore}/100
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-600 dark:text-gray-400">Platform:</span>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                      {deal.product?.marketplace || 'N/A'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {stats.recentDeals.length > 3 && (
+            <div className="mt-4 text-center">
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                +{stats.recentDeals.length - 3} more recent deals
+              </span>
+            </div>
+          )}
         </div>
       )}
 

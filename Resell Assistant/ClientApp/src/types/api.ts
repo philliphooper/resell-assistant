@@ -65,6 +65,11 @@ export interface DashboardStats {
   averageDealScore: number;
   topMarketplace: string;
   recentDealsCount: number;
+  activeAlerts: number;
+  portfolioValue: number;
+  weeklyProfit: number;
+  topCategories: string[];
+  recentDeals: Deal[];
 }
 
 export interface ApiResponse<T> {

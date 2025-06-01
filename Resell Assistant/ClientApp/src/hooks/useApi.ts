@@ -9,7 +9,7 @@ interface UseApiState<T> {
   refresh: () => void;
 }
 
-// Generic hook for API calls
+// Generic hook for API calls with retry logic
 function useApi<T>(
   apiCall: () => Promise<T>,
   dependencies: any[] = []
@@ -28,14 +28,29 @@ function useApi<T>(
       const apiError = err as ApiError;
       setError(apiError);
       console.error('API call failed:', apiError);
+      
+      // For connection errors, automatically retry once after delay
+      if (apiError.message?.includes('ECONNRESET') || apiError.message?.includes('ECONNREFUSED')) {
+        console.log('Connection error detected, retrying in 2 seconds...');
+        setTimeout(async () => {
+          try {
+            const retryResult = await apiCall();
+            setData(retryResult);
+            setError(null);
+          } catch (retryErr) {
+            console.error('Retry failed:', retryErr);
+            // Keep the original error
+          }
+        }, 2000);
+      }
     } finally {
       setLoading(false);
     }
-  }, dependencies);
-
+  }, [apiCall]);
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchData, ...dependencies]);
 
   const refresh = useCallback(() => {
     fetchData();
@@ -46,38 +61,51 @@ function useApi<T>(
 
 // Specific hooks for different data types
 export function useTopDeals(): UseApiState<Deal[]> {
-  return useApi(() => apiService.getTopDeals());
+  const apiCall = useCallback(() => apiService.getTopDeals(), []);
+  return useApi(apiCall);
 }
 
 export function useRecentProducts(count: number = 10): UseApiState<Product[]> {
-  return useApi(() => apiService.getRecentProducts(count), [count]);
+  const apiCall = useCallback(() => apiService.getRecentProducts(count), [count]);
+  return useApi(apiCall, [count]);
 }
 
 export function useDashboardStats(): UseApiState<DashboardStats> {
-  return useApi(() => apiService.getDashboardStats());
+  const apiCall = useCallback(() => apiService.getDashboardStats(), []);
+  return useApi(apiCall);
 }
 
 export function useProduct(id: number | null): UseApiState<Product> {
-  return useApi(
+  const apiCall = useCallback(
     () => id ? apiService.getProduct(id) : Promise.reject(new Error('No product ID provided')),
     [id]
   );
+  return useApi(apiCall, [id]);
 }
 
 export function useProductSearch(query: string, marketplace?: string): UseApiState<Product[]> {
-  return useApi(
+  const apiCall = useCallback(
     () => query ? apiService.searchProducts(query, marketplace) : Promise.resolve([]),
     [query, marketplace]
   );
+  return useApi(apiCall, [query, marketplace]);
 }
 
 // Hook for API health check
 export function useApiHealth() {
   const [isHealthy, setIsHealthy] = useState<boolean | null>(null);
   const [checking, setChecking] = useState(false);
+  const [lastCheckTime, setLastCheckTime] = useState<number>(0);
 
   const checkHealth = useCallback(async () => {
+    const now = Date.now();
+    // Throttle health checks to prevent rapid successive calls
+    if (now - lastCheckTime < 10000) { // Minimum 10 seconds between checks
+      return;
+    }
+    
     setChecking(true);
+    setLastCheckTime(now);
     try {
       const healthy = await apiService.checkHealth();
       setIsHealthy(healthy);
@@ -86,12 +114,11 @@ export function useApiHealth() {
     } finally {
       setChecking(false);
     }
-  }, []);
-
+  }, [lastCheckTime]);
   useEffect(() => {
     checkHealth();
-    // Check health every 30 seconds
-    const interval = setInterval(checkHealth, 30000);
+    // Check health every 5 minutes (reduced from 30 seconds)
+    const interval = setInterval(checkHealth, 300000);
     return () => clearInterval(interval);
   }, [checkHealth]);
 

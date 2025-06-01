@@ -60,19 +60,27 @@ using (var scope = app.Services.CreateScope())
     context.Database.EnsureCreated();
 }
 
-app.MapControllerRoute(
-    name: "default",
-    pattern: "{controller}/{action=Index}/{id?}");
+// Map API controllers explicitly with priority routing
+app.MapControllers();
 
-// Configure SPA
-app.UseSpa(spa =>
+// Only proxy non-API routes to the SPA development server
+app.MapWhen(context => !context.Request.Path.StartsWithSegments("/api"), appBuilder =>
 {
-    spa.Options.SourcePath = "ClientApp";
-    
-    if (app.Environment.IsDevelopment())
+    appBuilder.UseSpa(spa =>
     {
-        spa.UseProxyToSpaDevelopmentServer("http://localhost:3000");
-    }
+        spa.Options.SourcePath = "ClientApp";
+        
+        if (app.Environment.IsDevelopment())
+        {
+            spa.UseProxyToSpaDevelopmentServer("http://localhost:3000");
+        }
+    });
 });
+
+// Fallback for non-API routes when not in development
+if (!app.Environment.IsDevelopment())
+{
+    app.MapFallbackToFile("index.html");
+}
 
 app.Run();
