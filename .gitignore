@@ -284,3 +284,7 @@ Thumbs.db
 
 # Node modules
 **/node_modules/
+
+# Ignore local app settings files containing secrets
+appsettings.json
+Resell Assistant/appsettings.Development.json
