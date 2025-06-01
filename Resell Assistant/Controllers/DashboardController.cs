@@ -140,5 +140,48 @@ namespace Resell_Assistant.Controllers
                 return StatusCode(500, new { message = "Failed to calculate dashboard stats", error = ex.Message });
             }
         }
+
+        /// <summary>
+        /// Test eBay API connectivity and configuration - Issue #15
+        /// </summary>
+        [HttpGet("test-ebay-connection")]
+        public ActionResult TestEbayConnection()
+        {
+            try
+            {
+                // Get eBay configuration from appsettings
+                var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+                
+                var clientId = configuration["ApiKeys:EbayClientId"];
+                var clientSecret = configuration["ApiKeys:EbayClientSecret"];
+                var environment = configuration["ApiKeys:EbayEnvironment"] ?? "sandbox";
+                var baseUrl = configuration["ApiKeys:EbayBaseUrl"] ?? "https://api.sandbox.ebay.com";
+
+                var result = new
+                {
+                    timestamp = DateTime.UtcNow,
+                    environment = environment,
+                    baseUrl = baseUrl,
+                    clientIdConfigured = !string.IsNullOrEmpty(clientId) && !clientId.Contains("YOUR_"),
+                    clientSecretConfigured = !string.IsNullOrEmpty(clientSecret) && !clientSecret.Contains("YOUR_"),
+                    configurationStatus = (!string.IsNullOrEmpty(clientId) && !clientId.Contains("YOUR_") && 
+                                         !string.IsNullOrEmpty(clientSecret) && !clientSecret.Contains("YOUR_")) 
+                                         ? "Ready for API Integration" : "Needs Real API Credentials",
+                    nextSteps = (!string.IsNullOrEmpty(clientId) && !clientId.Contains("YOUR_")) 
+                               ? "Ready to implement eBay API service (Issue #11)"
+                               : "Complete eBay Developer setup (Issue #15)"
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { 
+                    message = "Failed to test eBay API configuration", 
+                    error = ex.Message,
+                    timestamp = DateTime.UtcNow
+                });
+            }
+        }
     }
 }
