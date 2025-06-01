@@ -1,5 +1,20 @@
 # Resell Assistant - Development Issues & Roadmap
 
+## 🎯 **CURRENT GITHUB ISSUES STATUS**
+
+### **ACTIVE ISSUES (Open on GitHub)**
+- **#15** - Setup eBay Developer Account and API Credentials (enhancement)
+- **#14** - Implement Background Data Synchronization Service (enhancement)  
+- **#13** - Implement Rate Limiting and API Management Services (enhancement)
+- **#12** - Phase 2: Implement Facebook Marketplace Scraping (enhancement)
+- **#11** - Phase 1: Implement eBay API Integration (enhancement)
+- **#10** - CRITICAL: Implement Real Marketplace Data Integration (critical, enhancement)
+- **#8** - Implement product search UI and backend integration (enhancement, frontend)
+- **#7** - Robust input validation and automated test coverage (enhancement, validation, testing)
+
+### **COMPLETED ISSUES (Closed on GitHub)**
+- **✅ #9** - Implement Real Data in Dashboard Component (COMPLETED - All acceptance criteria met)
+
 ## ✅ **RESOLVED ISSUES**
 
 ### 1. **~~Missing Database Context Registration~~** ✅ **COMPLETED**
@@ -55,15 +70,15 @@
 
 ## 🔴 Critical Issues (Must Fix)
 
-### 1. **Real Marketplace Data Integration** 🆕
+### 1. **Real Marketplace Data Integration** ✅ **TRACKED IN GITHUB**
+- **GitHub Issue**: #10 (CRITICAL) - Implement Real Marketplace Data Integration
+- **Supporting Issues**: #11 (eBay API), #12 (Facebook), #13 (Rate Limiting), #14 (Data Sync), #15 (API Setup)
 - **Issue**: Application currently uses only placeholder/seed data instead of real marketplace APIs
 - **Impact**: Cannot function as intended per README - no real eBay, Facebook, or Amazon data
 - **Current State**: Infrastructure ready but `MarketplaceService` only queries local database
-- **Required Implementation**:
-  - eBay API integration (Browse API, Sold listings)
-  - Facebook Marketplace ethical scraping
-  - Craigslist RSS feed integration
-  - Rate limiting and error handling for external APIs
+- **Implementation Plan**: Detailed in `REAL_MARKETPLACE_DATA_INTEGRATION_ISSUE.md`
+- **Estimated Effort**: 40-60 hours
+- **Priority**: CRITICAL for transforming from demo to production app
   - Background data synchronization
 - **Priority**: CRITICAL - Core application functionality
 - **Estimated Effort**: 40-60 hours
