@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Resell_Assistant.Data;
 using Resell_Assistant.Services;
+using Resell_Assistant.Services.External;
+using Resell_Assistant.Models.Configuration;
 using Resell_Assistant.Middleware;
 using Resell_Assistant.Filters;
 
@@ -21,6 +23,19 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddScoped<IMarketplaceService, MarketplaceService>();
 builder.Services.AddScoped<IPriceAnalysisService, PriceAnalysisService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+
+// Register credential management services
+builder.Services.AddScoped<IEncryptionService, EncryptionService>();
+builder.Services.AddScoped<ICredentialService, CredentialService>();
+
+// Configure eBay API settings
+builder.Services.Configure<Resell_Assistant.Models.Configuration.EbayApiSettings>(
+    builder.Configuration.GetSection("ApiKeys"));
+
+// Register eBay API service
+builder.Services.AddScoped<IEbayApiService, EbayApiService>();
+// Register Facebook Marketplace API service
+builder.Services.AddScoped<IFacebookMarketplaceService, FacebookMarketplaceService>();
 
 // Add CORS policy for API calls
 builder.Services.AddCors(options =>
@@ -53,26 +68,34 @@ app.UseRouting();
 // Use CORS
 app.UseCors("AllowReactApp");
 
-// Ensure database is created and seeded
+// Ensure database is created and migrations are applied
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    context.Database.EnsureCreated();
+    context.Database.Migrate();
 }
 
-app.MapControllerRoute(
-    name: "default",
-    pattern: "{controller}/{action=Index}/{id?}");
+// Map API controllers explicitly with priority routing
+app.MapControllers();
 
-// Configure SPA
-app.UseSpa(spa =>
+// Only proxy non-API routes to the SPA development server
+app.MapWhen(context => !context.Request.Path.StartsWithSegments("/api"), appBuilder =>
 {
-    spa.Options.SourcePath = "ClientApp";
-    
-    if (app.Environment.IsDevelopment())
+    appBuilder.UseSpa(spa =>
     {
-        spa.UseProxyToSpaDevelopmentServer("http://localhost:3000");
-    }
+        spa.Options.SourcePath = "ClientApp";
+        
+        if (app.Environment.IsDevelopment())
+        {
+            spa.UseProxyToSpaDevelopmentServer("http://localhost:3000");
+        }
+    });
 });
+
+// Fallback for non-API routes when not in development
+if (!app.Environment.IsDevelopment())
+{
+    app.MapFallbackToFile("index.html");
+}
 
 app.Run();

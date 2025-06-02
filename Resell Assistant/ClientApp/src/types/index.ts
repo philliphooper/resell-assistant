@@ -85,9 +85,12 @@ export interface SearchFilters {
 }
 
 export interface DashboardStats {
+  totalProducts: number;
   totalDeals: number;
   totalProfit: number;
   averageDealScore: number;
+  topMarketplace: string;
+  recentDealsCount: number;
   activeAlerts: number;
   portfolioValue: number;
   weeklyProfit: number;

@@ -1,11 +1,53 @@
-import { Product, Deal, PriceHistory, SearchAlert, UserPortfolio, DashboardStats, ApiError } from '../types/api';
+import { Product, Deal, PriceHistory, DashboardStats, ApiError } from '../types/api';
+
+// Global connection manager to reuse connections
+class ConnectionManager {
+  private static instance: ConnectionManager;
+  private abortController: AbortController | null = null;
+
+  private constructor() {}
+
+  static getInstance(): ConnectionManager {
+    if (!ConnectionManager.instance) {
+      ConnectionManager.instance = new ConnectionManager();
+    }
+    return ConnectionManager.instance;
+  }
+
+  createSignal(timeoutMs: number): AbortSignal {
+    if (this.abortController) {
+      this.abortController.abort();
+    }
+    this.abortController = new AbortController();
+    setTimeout(() => {
+      if (this.abortController) {
+        this.abortController.abort();
+      }
+    }, timeoutMs);
+    return this.abortController.signal;
+  }
+
+  cleanup() {
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
+    }
+  }
+}
 
 class ApiService {
   private baseUrl: string;
+  private timeoutMs: number = 5000; // Reduced to 5 second timeout
+  private connectionManager: ConnectionManager;
 
   constructor() {
     // Use the same domain as the current page (for .NET integration)
     this.baseUrl = window.location.origin + '/api';
+    this.connectionManager = ConnectionManager.getInstance();
+  }
+
+  private createTimeoutSignal(timeoutMs: number = this.timeoutMs): AbortSignal {
+    return this.connectionManager.createSignal(timeoutMs);
   }
 
   private async handleResponse<T>(response: Response): Promise<T> {
@@ -26,34 +68,52 @@ class ApiService {
     
     // If not JSON, return empty object
     return {} as T;
-  }
-
-  private async get<T>(endpoint: string): Promise<T> {
+  }  private async get<T>(endpoint: string): Promise<T> {
     try {
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'Connection': 'keep-alive', // Use keep-alive connections
         },
+        signal: this.createTimeoutSignal(),
+        cache: 'no-store', // Prevent caching issues
       });
       return await this.handleResponse<T>(response);
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        const timeoutError: ApiError = {
+          message: 'Request timed out after 5 seconds',
+          status: 408,
+          details: `GET ${endpoint} request timeout`
+        };
+        throw timeoutError;
+      }
       console.error(`API GET ${endpoint} failed:`, error);
       throw error;
     }
-  }
-
-  private async post<T>(endpoint: string, data: any): Promise<T> {
+  }  private async post<T>(endpoint: string, data: any): Promise<T> {
     try {
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Connection': 'keep-alive', // Use keep-alive connections
         },
         body: JSON.stringify(data),
+        signal: this.createTimeoutSignal(),
+        cache: 'no-store', // Prevent caching issues
       });
       return await this.handleResponse<T>(response);
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        const timeoutError: ApiError = {
+          message: 'Request timed out after 30 seconds',
+          status: 408,
+          details: `POST ${endpoint} request timeout`
+        };
+        throw timeoutError;
+      }
       console.error(`API POST ${endpoint} failed:`, error);
       throw error;
     }
@@ -87,65 +147,20 @@ class ApiService {
   async getPriceHistory(productId: number): Promise<PriceHistory[]> {
     return this.get<PriceHistory[]>(`/products/${productId}/price-history`);
   }
-
-  // Dashboard stats (calculated from existing data)
+  // Dashboard stats
   async getDashboardStats(): Promise<DashboardStats> {
-    try {
-      // Since we don't have a dedicated stats endpoint, calculate from existing data
-      const [deals, products] = await Promise.all([
-        this.getTopDeals(),
-        this.getRecentProducts(100) // Get more for better stats
-      ]);
-
-      const totalProducts = products.length;
-      const totalDeals = deals.length;
-      const totalProfit = deals.reduce((sum, deal) => sum + deal.potentialProfit, 0);
-      const averageDealScore = deals.length > 0 
-        ? deals.reduce((sum, deal) => sum + deal.dealScore, 0) / deals.length 
-        : 0;
-
-      // Find most common marketplace
-      const marketplaceCounts = products.reduce((acc, product) => {
-        acc[product.marketplace] = (acc[product.marketplace] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
-      
-      const topMarketplace = Object.entries(marketplaceCounts)
-        .sort(([,a], [,b]) => b - a)[0]?.[0] || 'Unknown';
-
-      // Count recent deals (last 7 days)
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-      const recentDealsCount = deals.filter(deal => 
-        new Date(deal.createdAt) > oneWeekAgo
-      ).length;
-
-      return {
-        totalProducts,
-        totalDeals,
-        totalProfit,
-        averageDealScore: Math.round(averageDealScore),
-        topMarketplace,
-        recentDealsCount
-      };
-    } catch (error) {
-      console.error('Failed to calculate dashboard stats:', error);
-      // Return default stats if calculation fails
-      return {
-        totalProducts: 0,
-        totalDeals: 0,
-        totalProfit: 0,
-        averageDealScore: 0,
-        topMarketplace: 'N/A',
-        recentDealsCount: 0
-      };
-    }
-  }
-
-  // Health check
+    return this.get<DashboardStats>('/dashboard/stats');
+  }  // Health check
   async checkHealth(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/products/recent?count=1`);
+      const response = await fetch(`${this.baseUrl}/products/recent?count=1`, {
+        method: 'GET',
+        headers: {
+          'Connection': 'close', // Force connection closure
+        },
+        signal: this.createTimeoutSignal(5000), // Shorter timeout for health check
+        cache: 'no-store', // Prevent caching issues
+      });
       return response.ok;
     } catch {
       return false;

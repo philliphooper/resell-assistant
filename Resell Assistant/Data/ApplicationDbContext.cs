@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Resell_Assistant.Models;
+using Resell_Assistant.Models.Configuration;
 
 namespace Resell_Assistant.Data
 {
@@ -12,19 +13,24 @@ namespace Resell_Assistant.Data
         public DbSet<PriceHistory> PriceHistories { get; set; }
         public DbSet<SearchAlert> SearchAlerts { get; set; }
         public DbSet<UserPortfolio> UserPortfolios { get; set; }
+        public DbSet<ApiCredentials> ApiCredentials { get; set; }
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            optionsBuilder.ConfigureWarnings(warnings =>
+                warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+        }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            base.OnModelCreating(modelBuilder);
-
-            ConfigureProduct(modelBuilder);
+            base.OnModelCreating(modelBuilder);            ConfigureProduct(modelBuilder);
             ConfigureDeal(modelBuilder);
             ConfigurePriceHistory(modelBuilder);
             ConfigureSearchAlert(modelBuilder);
             ConfigureUserPortfolio(modelBuilder);
+            ConfigureApiCredentials(modelBuilder);
 
-            // Seed initial data
-            SeedData(modelBuilder);
+            // Fake data removed - application now relies purely on real data from external sources
         }
 
         private void ConfigureProduct(ModelBuilder modelBuilder)
@@ -67,9 +73,7 @@ namespace Resell_Assistant.Data
                 entity.HasIndex(e => e.DealScore);
                 entity.HasIndex(e => e.CreatedAt);
             });
-        }
-
-        private void ConfigurePriceHistory(ModelBuilder modelBuilder)
+        }        private void ConfigurePriceHistory(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<PriceHistory>(entity =>
             {
@@ -79,7 +83,7 @@ namespace Resell_Assistant.Data
                 entity.Property(e => e.Marketplace).IsRequired().HasMaxLength(100);
                 entity.Property(e => e.RecordedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                entity.HasOne<Product>()
+                entity.HasOne(e => e.Product)
                     .WithMany()
                     .HasForeignKey(e => e.ProductId)
                     .OnDelete(DeleteBehavior.Cascade);
@@ -106,9 +110,7 @@ namespace Resell_Assistant.Data
                 entity.HasIndex(e => e.IsActive);
                 entity.HasIndex(e => e.CreatedAt);
             });
-        }
-
-        private void ConfigureUserPortfolio(ModelBuilder modelBuilder)
+        }        private void ConfigureUserPortfolio(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<UserPortfolio>(entity =>
             {
@@ -121,7 +123,7 @@ namespace Resell_Assistant.Data
                 entity.Property(e => e.Status).IsRequired().HasMaxLength(50);
                 entity.Property(e => e.Notes).HasMaxLength(1000);
 
-                entity.HasOne<Product>()
+                entity.HasOne(e => e.Product)
                     .WithMany()
                     .HasForeignKey(e => e.ProductId)
                     .OnDelete(DeleteBehavior.Restrict);
@@ -129,107 +131,24 @@ namespace Resell_Assistant.Data
                 entity.HasIndex(e => e.ProductId);
                 entity.HasIndex(e => e.Status);
                 entity.HasIndex(e => e.PurchaseDate);
-                entity.HasIndex(e => e.SellDate);
+                entity.HasIndex(e => e.SellDate);            });        }
+
+        private void ConfigureApiCredentials(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<ApiCredentials>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Service).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.EncryptedClientId).IsRequired();
+                entity.Property(e => e.EncryptedClientSecret).IsRequired();
+                entity.Property(e => e.Environment).HasMaxLength(20);
+                entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+                entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                entity.HasIndex(e => e.Service).IsUnique();
             });
         }
 
-        private void SeedData(ModelBuilder modelBuilder)
-        {
-            // Seed some sample products for testing
-            modelBuilder.Entity<Product>().HasData(
-                new Product
-                {
-                    Id = 1,
-                    Title = "iPhone 13 Pro 128GB Unlocked",
-                    Description = "Excellent condition iPhone 13 Pro",
-                    Price = 650.00m,
-                    ShippingCost = 15.00m,
-                    Marketplace = "eBay",
-                    Condition = "Used - Excellent",
-                    Location = "New York, NY",
-                    Url = "https://example.com/iphone13pro",
-                    ImageUrl = "https://example.com/image1.jpg",
-                    CreatedAt = DateTime.UtcNow
-                },
-                new Product
-                {
-                    Id = 2,
-                    Title = "MacBook Air M1 256GB",
-                    Description = "2020 MacBook Air with M1 chip",
-                    Price = 850.00m,
-                    ShippingCost = 25.00m,
-                    Marketplace = "Facebook Marketplace",
-                    Condition = "Used - Good",
-                    Location = "Los Angeles, CA",
-                    Url = "https://example.com/macbook",
-                    ImageUrl = "https://example.com/image2.jpg",
-                    CreatedAt = DateTime.UtcNow
-                },
-                new Product
-                {
-                    Id = 3,
-                    Title = "Sony PlayStation 5 Console",
-                    Description = "Brand new PS5 console in original packaging",
-                    Price = 450.00m,
-                    ShippingCost = 20.00m,
-                    Marketplace = "Craigslist",
-                    Condition = "New",
-                    Location = "Chicago, IL",
-                    Url = "https://example.com/ps5",
-                    ImageUrl = "https://example.com/image3.jpg",
-                    CreatedAt = DateTime.UtcNow
-                }
-            );
-
-            // Seed some sample deals
-            modelBuilder.Entity<Deal>().HasData(
-                new Deal
-                {
-                    Id = 1,
-                    ProductId = 1,
-                    PotentialProfit = 150.00m,
-                    EstimatedSellPrice = 800.00m,
-                    DealScore = 85,
-                    Confidence = 78,
-                    Reasoning = "iPhone 13 Pro selling below market value. High demand product with consistent resale value.",
-                    CreatedAt = DateTime.UtcNow
-                },
-                new Deal
-                {
-                    Id = 2,
-                    ProductId = 2,
-                    PotentialProfit = 200.00m,
-                    EstimatedSellPrice = 1050.00m,
-                    DealScore = 92,
-                    Confidence = 85,
-                    Reasoning = "MacBook Air M1 priced significantly below retail. Strong market demand for Apple laptops.",
-                    CreatedAt = DateTime.UtcNow
-                },
-                new Deal
-                {
-                    Id = 3,
-                    ProductId = 3,
-                    PotentialProfit = 100.00m,
-                    EstimatedSellPrice = 550.00m,
-                    DealScore = 75,
-                    Confidence = 70,
-                    Reasoning = "PS5 at below MSRP. Gaming console with steady demand, moderate profit margin.",
-                    CreatedAt = DateTime.UtcNow
-                }
-            );
-
-            // Seed a sample search alert
-            modelBuilder.Entity<SearchAlert>().HasData(
-                new SearchAlert
-                {
-                    Id = 1,
-                    SearchQuery = "iPhone 13 Pro",
-                    MinProfit = 100.00m,
-                    MaxPrice = 700.00m,
-                    IsActive = true,
-                    CreatedAt = DateTime.UtcNow
-                }
-            );
-        }
+        // Removed SeedData method - application now relies purely on real data from external sources
     }
 }

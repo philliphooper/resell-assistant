@@ -8,13 +8,13 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
-
   const navigation = [
     { name: 'Dashboard', href: '/' },
     { name: 'Search', href: '/search' },
     { name: 'Deals', href: '/deals' },
     { name: 'Portfolio', href: '/portfolio' },
     { name: 'Alerts', href: '/alerts' },
+    { name: 'Settings', href: '/settings' },
   ];
 
   const isActive = (href: string) => {
