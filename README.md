@@ -4,6 +4,12 @@ A comprehensive web application for finding profitable resale opportunities by a
 
 ## ✅ Current Status
 
+**Latest Update** (June 2, 2025): 🔧 **Connection Leak Issues Resolved** 
+- ✅ Fixed dashboard loading states - no more immediate error messages
+- ✅ Eliminated API connection leaks causing timeouts  
+- ✅ Optimized request handling with 10s timeout for faster response
+- ✅ Enhanced user experience with proper loading → connected → data flow
+
 **Phase 1 Complete**: eBay API Integration fully operational with real marketplace data
 - ✅ eBay API connection and authentication working
 - ✅ Real-time product search across eBay marketplace
