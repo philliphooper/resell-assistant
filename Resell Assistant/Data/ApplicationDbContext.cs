@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Resell_Assistant.Models;
+using Resell_Assistant.Models.Configuration;
 
 namespace Resell_Assistant.Data
 {
@@ -12,6 +13,7 @@ namespace Resell_Assistant.Data
         public DbSet<PriceHistory> PriceHistories { get; set; }
         public DbSet<SearchAlert> SearchAlerts { get; set; }
         public DbSet<UserPortfolio> UserPortfolios { get; set; }
+        public DbSet<ApiCredentials> ApiCredentials { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -26,6 +28,7 @@ namespace Resell_Assistant.Data
             ConfigurePriceHistory(modelBuilder);
             ConfigureSearchAlert(modelBuilder);
             ConfigureUserPortfolio(modelBuilder);
+            ConfigureApiCredentials(modelBuilder);
 
             // Fake data removed - application now relies purely on real data from external sources
         }
@@ -128,8 +131,23 @@ namespace Resell_Assistant.Data
                 entity.HasIndex(e => e.ProductId);
                 entity.HasIndex(e => e.Status);
                 entity.HasIndex(e => e.PurchaseDate);
-                entity.HasIndex(e => e.SellDate);
-            });        }
+                entity.HasIndex(e => e.SellDate);            });        }
+
+        private void ConfigureApiCredentials(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<ApiCredentials>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Service).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.EncryptedClientId).IsRequired();
+                entity.Property(e => e.EncryptedClientSecret).IsRequired();
+                entity.Property(e => e.Environment).HasMaxLength(20);
+                entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+                entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                entity.HasIndex(e => e.Service).IsUnique();
+            });
+        }
 
         // Removed SeedData method - application now relies purely on real data from external sources
     }

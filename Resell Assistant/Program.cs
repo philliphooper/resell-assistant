@@ -24,6 +24,10 @@ builder.Services.AddScoped<IMarketplaceService, MarketplaceService>();
 builder.Services.AddScoped<IPriceAnalysisService, PriceAnalysisService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 
+// Register credential management services
+builder.Services.AddScoped<IEncryptionService, EncryptionService>();
+builder.Services.AddScoped<ICredentialService, CredentialService>();
+
 // Configure eBay API settings
 builder.Services.Configure<Resell_Assistant.Models.Configuration.EbayApiSettings>(
     builder.Configuration.GetSection("ApiKeys"));
@@ -64,11 +68,11 @@ app.UseRouting();
 // Use CORS
 app.UseCors("AllowReactApp");
 
-// Ensure database is created and seeded
+// Ensure database is created and migrations are applied
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    context.Database.EnsureCreated();
+    context.Database.Migrate();
 }
 
 // Map API controllers explicitly with priority routing

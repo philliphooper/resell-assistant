@@ -7,18 +7,19 @@ import Search from './pages/Search';
 import Deals from './pages/Deals';
 import Portfolio from './pages/Portfolio';
 import Alerts from './pages/Alerts';
+import Settings from './pages/Settings';
 
 function App() {
   return (
     <ThemeProvider>
       <Router>
-        <Layout>
-          <Routes>
+        <Layout>          <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/search" element={<Search />} />
             <Route path="/deals" element={<Deals />} />
             <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/alerts" element={<Alerts />} />
+            <Route path="/settings" element={<Settings />} />
           </Routes>
         </Layout>
       </Router>

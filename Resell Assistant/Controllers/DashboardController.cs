@@ -273,8 +273,8 @@ namespace Resell_Assistant.Controllers
                 
                 var clientId = configuration["ApiKeys:ClientId"];
                 var clientSecret = configuration["ApiKeys:ClientSecret"];
-                var environment = configuration["ApiKeys:Environment"] ?? "sandbox";
-                var baseUrl = configuration["ApiKeys:BaseUrl"] ?? "https://api.sandbox.ebay.com";
+                var environment = configuration["ApiKeys:Environment"] ?? "production";
+                var baseUrl = configuration["ApiKeys:BaseUrl"] ?? "https://api.ebay.com";
 
                 var result = new
                 {

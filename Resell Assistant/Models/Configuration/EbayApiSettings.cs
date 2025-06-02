@@ -18,17 +18,17 @@ public class EbayApiSettings
     /// <summary>
     /// Environment: "sandbox" or "production"
     /// </summary>
-    public string Environment { get; set; } = "sandbox";
+    public string Environment { get; set; } = "production";
 
     /// <summary>
     /// Base URL for eBay API calls
     /// </summary>
-    public string BaseUrl { get; set; } = "https://api.sandbox.ebay.com";
+    public string BaseUrl { get; set; } = "https://api.ebay.com";
 
     /// <summary>
     /// OAuth URL for token generation
     /// </summary>
-    public string OAuthUrl { get; set; } = "https://api.sandbox.ebay.com";
+    public string OAuthUrl { get; set; } = "https://auth.ebay.com";
 
     /// <summary>
     /// Rate limiting: maximum calls per second

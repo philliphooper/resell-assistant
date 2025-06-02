@@ -14,15 +14,20 @@ namespace Resell_Assistant.Services.External;
 public class EbayApiService : IEbayApiService
 {
     private readonly EbayApiSettings _settings;
+    private readonly ICredentialService _credentialService;
     private readonly ILogger<EbayApiService> _logger;
     private readonly RestClient _client;
     private readonly SemaphoreSlim _rateLimitSemaphore;
     private string? _accessToken;
     private DateTime _tokenExpiry;
 
-    public EbayApiService(IOptions<EbayApiSettings> settings, ILogger<EbayApiService> logger)
+    public EbayApiService(
+        IOptions<EbayApiSettings> settings, 
+        ICredentialService credentialService,
+        ILogger<EbayApiService> logger)
     {
         _settings = settings.Value;
+        _credentialService = credentialService;
         _logger = logger;
           // Initialize RestClient with base URL and reduced timeout for better responsiveness
         var options = new RestClientOptions(_settings.BaseUrl)
@@ -99,6 +104,18 @@ public class EbayApiService : IEbayApiService
             _logger.LogError(ex, "Error searching eBay products for query: {Query}", query);
             return new List<Product>();
         }
+        finally
+        {
+            try
+            {
+                _rateLimitSemaphore.Release();
+            }
+            catch (SemaphoreFullException)
+            {
+                // Ignore - semaphore is already at maximum capacity
+                _logger.LogDebug("Semaphore already at maximum capacity during release");
+            }
+        }
     }
 
     /// <summary>
@@ -136,6 +153,18 @@ public class EbayApiService : IEbayApiService
         {
             _logger.LogError(ex, "Error getting eBay item details for ID: {ItemId}", itemId);
             return null;
+        }
+        finally
+        {
+            try
+            {
+                _rateLimitSemaphore.Release();
+            }
+            catch (SemaphoreFullException)
+            {
+                // Ignore - semaphore is already at maximum capacity
+                _logger.LogDebug("Semaphore already at maximum capacity during release");
+            }
         }
     }
 
@@ -180,6 +209,18 @@ public class EbayApiService : IEbayApiService
         {
             _logger.LogError(ex, "Error getting eBay sold listings for query: {Query}", query);
             return new List<SoldListing>();
+        }
+        finally
+        {
+            try
+            {
+                _rateLimitSemaphore.Release();
+            }
+            catch (SemaphoreFullException)
+            {
+                // Ignore - semaphore is already at maximum capacity
+                _logger.LogDebug("Semaphore already at maximum capacity during release");
+            }
         }
     }
 
@@ -240,6 +281,18 @@ public class EbayApiService : IEbayApiService
             _logger.LogError(ex, "Error getting eBay categories");
             return new List<Category>();
         }
+        finally
+        {
+            try
+            {
+                _rateLimitSemaphore.Release();
+            }
+            catch (SemaphoreFullException)
+            {
+                // Ignore - semaphore is already at maximum capacity
+                _logger.LogDebug("Semaphore already at maximum capacity during release");
+            }
+        }
     }
 
     /// <summary>
@@ -249,17 +302,26 @@ public class EbayApiService : IEbayApiService
     {
         try
         {
-            if (!_settings.IsValid)
+            // Check if credentials are available
+            var hasCredentials = await _credentialService.HasCredentialsAsync("eBay");
+            if (!hasCredentials)
             {
-                _logger.LogWarning("eBay API settings are not valid");
+                _logger.LogWarning("eBay credentials are not configured");
                 return false;
             }
 
+            // Try to get a valid token (this will test the credentials)
             await EnsureValidTokenAsync();
             
-            // Test with a simple category request
-            var categories = await GetCategoriesAsync();
-            return categories.Any();
+            // Test with a simple search request instead of categories (more reliable)
+            var request = new RestRequest("/buy/browse/v1/item_summary/search", Method.Get);
+            request.AddHeader("Authorization", $"Bearer {_accessToken}");
+            request.AddHeader("X-EBAY-C-MARKETPLACE-ID", _settings.DefaultMarketplace);
+            request.AddParameter("q", "test");
+            request.AddParameter("limit", "1");
+
+            var response = await _client.ExecuteAsync(request);
+            return response.IsSuccessful;
         }
         catch (Exception ex)
         {
@@ -300,12 +362,19 @@ public class EbayApiService : IEbayApiService
     private async Task RefreshAccessTokenAsync()
     {        try
         {
+            // Get credentials from the credential service
+            var (clientId, clientSecret) = await _credentialService.GetCredentialsAsync("eBay");
+            if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
+            {
+                throw new Exception("eBay credentials not found. Please configure your eBay API credentials.");
+            }
+
             var tokenClient = new RestClient(_settings.OAuthUrl);
             var request = new RestRequest("/identity/v1/oauth2/token", Method.Post);
             
             // Client credentials for OAuth 2.0
-            var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_settings.ClientId}:{_settings.ClientSecret}"));
-            request.AddHeader("Authorization", $"Basic {credentials}");
+            var credentialsEncoded = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
+            request.AddHeader("Authorization", $"Basic {credentialsEncoded}");
             request.AddHeader("Content-Type", "application/x-www-form-urlencoded");
             request.AddParameter("grant_type", "client_credentials");
             request.AddParameter("scope", "https://api.ebay.com/oauth/api_scope");
