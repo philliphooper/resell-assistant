@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Deal, Product, DashboardStats, ApiError } from '../types/api';
 import apiService from '../services/api';
 
@@ -24,27 +24,33 @@ function useApi<T>(
       setError(null);
       const result = await apiCall();
       setData(result);
+      setLoading(false);
     } catch (err) {
       const apiError = err as ApiError;
       setError(apiError);
       console.error('API call failed:', apiError);
       
       // For connection errors, automatically retry once after delay
-      if (apiError.message?.includes('ECONNRESET') || apiError.message?.includes('ECONNREFUSED')) {
-        console.log('Connection error detected, retrying in 2 seconds...');
+      if (apiError.message?.includes('ECONNRESET') || 
+          apiError.message?.includes('ECONNREFUSED') ||
+          apiError.message?.includes('fetch')) {
+        console.log('Connection error detected, retrying in 3 seconds...');
+        // Keep loading=true during retry
         setTimeout(async () => {
           try {
+            setError(null); // Clear error during retry
             const retryResult = await apiCall();
             setData(retryResult);
-            setError(null);
           } catch (retryErr) {
             console.error('Retry failed:', retryErr);
-            // Keep the original error
+            setError(retryErr as ApiError);
+          } finally {
+            setLoading(false); // Only set loading=false after retry completes
           }
-        }, 2000);
+        }, 3000); // Reduced retry delay to 3 seconds for better UX
+      } else {
+        setLoading(false); // Set loading=false immediately for non-retry errors
       }
-    } finally {
-      setLoading(false);
     }
   }, [apiCall]);
   useEffect(() => {
@@ -94,33 +100,42 @@ export function useProductSearch(query: string, marketplace?: string): UseApiSta
 // Hook for API health check
 export function useApiHealth() {
   const [isHealthy, setIsHealthy] = useState<boolean | null>(null);
-  const [checking, setChecking] = useState(false);
-  const [lastCheckTime, setLastCheckTime] = useState<number>(0);
+  const [checking, setChecking] = useState(true); // Start with checking=true to show loading state
+  const lastCheckTimeRef = useRef<number>(0);
+
+  console.log('[useApiHealth] Render - isHealthy:', isHealthy, 'checking:', checking);
 
   const checkHealth = useCallback(async () => {
     const now = Date.now();
-    // Throttle health checks to prevent rapid successive calls
-    if (now - lastCheckTime < 10000) { // Minimum 10 seconds between checks
+    // Throttle health checks to prevent rapid successive calls, but allow first check
+    if (lastCheckTimeRef.current > 0 && now - lastCheckTimeRef.current < 30000) { // Allow immediate first check
+      console.log('[useApiHealth] Throttled health check, skipping');
       return;
     }
     
+    console.log('[useApiHealth] Starting health check');
     setChecking(true);
-    setLastCheckTime(now);
+    lastCheckTimeRef.current = now;
     try {
       const healthy = await apiService.checkHealth();
+      console.log('[useApiHealth] Health check result:', healthy);
       setIsHealthy(healthy);
-    } catch {
+    } catch (error) {
+      console.error('[useApiHealth] Health check failed:', error);
       setIsHealthy(false);
     } finally {
+      console.log('[useApiHealth] Health check finished, setting checking=false');
       setChecking(false);
     }
-  }, [lastCheckTime]);
+  }, []);
+  
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     checkHealth();
-    // Check health every 5 minutes (reduced from 30 seconds)
-    const interval = setInterval(checkHealth, 300000);
+    // Check health every 10 minutes for better stability
+    const interval = setInterval(checkHealth, 600000);
     return () => clearInterval(interval);
-  }, [checkHealth]);
+  }, []); // Empty dependency array to run only once
 
   return { isHealthy, checking, checkHealth };
 }

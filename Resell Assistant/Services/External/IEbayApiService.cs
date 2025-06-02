@@ -6,7 +6,7 @@ namespace Resell_Assistant.Services.External;
 /// Interface for eBay API integration service
 /// Handles authentication, product search, and data retrieval from eBay
 /// </summary>
-public interface IEbayApiService
+public interface IEbayApiService : IDisposable
 {
     /// <summary>
     /// Search for products on eBay marketplace

@@ -9,7 +9,7 @@ import { Deal } from '../types/api';
 const Dashboard: React.FC = () => {
   const { data: deals, loading: dealsLoading, error: dealsError, refresh: refreshDeals } = useTopDeals();
   const { data: stats, loading: statsLoading, error: statsError, refresh: refreshStats } = useDashboardStats();
-  const { isHealthy } = useApiHealth();
+  const { isHealthy, checking: healthChecking, checkHealth } = useApiHealth();
 
   // Enhanced state for deal discovery
   const [discoveringDeals, setDiscoveringDeals] = useState(false);
@@ -49,6 +49,7 @@ const Dashboard: React.FC = () => {
   const handleRefresh = () => {
     refreshDeals();
     refreshStats();
+    checkHealth(); // Also refresh the API health status
   };
 
   // Enhanced deal discovery with better error handling and user feedback
@@ -175,7 +176,17 @@ const Dashboard: React.FC = () => {
 
   // Show API connection status
   const renderApiStatus = () => {
-    if (isHealthy === null) return null;
+    // Show loading state during health check OR if health status is still unknown
+    if (healthChecking || isHealthy === null) {
+      return (
+        <div className="mb-6 p-4 rounded-lg bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
+          <div className="flex items-center">
+            <div className="animate-spin w-3 h-3 mr-3 border border-blue-600 border-t-transparent rounded-full"></div>
+            <span className="font-medium">Checking API Connection...</span>
+          </div>
+        </div>
+      );
+    }
     
     return (
       <div className={`mb-6 p-4 rounded-lg ${
@@ -192,10 +203,11 @@ const Dashboard: React.FC = () => {
           </span>
           {!isHealthy && (
             <button
-              onClick={handleRefresh}
-              className="ml-4 text-sm underline hover:no-underline"
+              onClick={checkHealth}
+              disabled={healthChecking}
+              className="ml-4 text-sm underline hover:no-underline disabled:opacity-50"
             >
-              Retry
+              {healthChecking ? 'Retrying...' : 'Retry'}
             </button>
           )}
         </div>
@@ -275,14 +287,33 @@ const Dashboard: React.FC = () => {
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statsLoading ? (
-          <div className="col-span-full">
-            <LoadingSpinner text="Loading statistics..." className="py-8" />
-          </div>
+          // Show loading skeleton for each card
+          Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700 animate-pulse">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-3/4 mb-2"></div>
+                  <div className="h-8 bg-gray-200 dark:bg-gray-600 rounded w-1/2"></div>
+                </div>
+                <div className="w-12 h-12 bg-gray-200 dark:bg-gray-600 rounded-lg"></div>
+              </div>
+            </div>
+          ))
         ) : statsError ? (
           <div className="col-span-full">
-            <div className="bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 p-4 rounded-lg">
-              <p className="font-medium">Failed to load statistics</p>
-              <p className="text-sm mt-1">{statsError.message}</p>
+            <div className="bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 p-6 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Failed to load statistics</p>
+                  <p className="text-sm mt-1">{statsError.message}</p>
+                </div>
+                <button
+                  onClick={refreshStats}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors duration-200 text-sm"
+                >
+                  Retry
+                </button>
+              </div>
             </div>
           </div>
         ) : stats ? (
@@ -330,7 +361,21 @@ const Dashboard: React.FC = () => {
               color="purple"
             />
           </>
-        ) : null}
+        ) : (
+          // Fallback state when no data is available but no error occurred
+          <div className="col-span-full">
+            <div className="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 p-6 rounded-lg text-center">
+              <p className="font-medium">No statistics available</p>
+              <p className="text-sm mt-1">Click refresh to load dashboard data</p>
+              <button
+                onClick={refreshStats}
+                className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 text-sm"
+              >
+                Load Statistics
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Enhanced Stats Section */}

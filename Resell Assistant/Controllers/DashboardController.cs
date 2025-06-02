@@ -302,5 +302,18 @@ namespace Resell_Assistant.Controllers
                 });
             }
         }
+
+        /// <summary>
+        /// Simple health check endpoint for API connectivity testing
+        /// </summary>
+        [HttpGet("health")]
+        public ActionResult Health()
+        {
+            return Ok(new { 
+                status = "healthy", 
+                timestamp = DateTime.UtcNow,
+                message = "API is operational"
+            });
+        }
     }
 }

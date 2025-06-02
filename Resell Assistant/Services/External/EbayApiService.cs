@@ -29,10 +29,10 @@ public class EbayApiService : IEbayApiService
         _settings = settings.Value;
         _credentialService = credentialService;
         _logger = logger;
-          // Initialize RestClient with base URL and reduced timeout for better responsiveness
+          // Initialize RestClient with base URL and reasonable timeout for API operations
         var options = new RestClientOptions(_settings.BaseUrl)
         {
-            Timeout = TimeSpan.FromSeconds(Math.Min(_settings.TimeoutSeconds, 5)) // Cap at 5 seconds for dashboard responsiveness
+            Timeout = TimeSpan.FromSeconds(Math.Min(_settings.TimeoutSeconds, 30)) // Increased to 30 seconds for better reliability
         };
         _client = new RestClient(options);
         
@@ -523,11 +523,40 @@ public class EbayApiService : IEbayApiService
 
     #endregion
 
+    #region IDisposable Implementation
+
+    private bool _disposed = false;
+
     public void Dispose()
     {
-        _rateLimitSemaphore?.Dispose();
-        _client?.Dispose();
+        Dispose(true);
+        GC.SuppressFinalize(this);
     }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed && disposing)
+        {
+            try
+            {
+                _client?.Dispose();
+                _rateLimitSemaphore?.Dispose();
+                _logger?.LogDebug("EbayApiService resources disposed successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error disposing EbayApiService resources");
+            }
+            _disposed = true;
+        }
+    }
+
+    ~EbayApiService()
+    {
+        Dispose(false);
+    }
+
+    #endregion
 }
 
 #region eBay API Response Models

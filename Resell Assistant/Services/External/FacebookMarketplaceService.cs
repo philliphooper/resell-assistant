@@ -18,12 +18,13 @@ public class FacebookMarketplaceService : IFacebookMarketplaceService
     private static DateTime _lastRequestTime = DateTime.MinValue;
     private const int MinDelayBetweenRequestsMs = 3000; // 3 seconds between requests
 
-    public FacebookMarketplaceService(ILogger<FacebookMarketplaceService> logger)
+    public FacebookMarketplaceService(ILogger<FacebookMarketplaceService> logger, HttpClient httpClient)
     {
         _logger = logger;
         
-        // Initialize HTTP client with proper headers
-        _httpClient = new HttpClient();
+        // Use injected HTTP client with proper headers
+        _httpClient = httpClient;
+        _httpClient.DefaultRequestHeaders.Clear(); // Clear any existing headers
         _httpClient.DefaultRequestHeaders.Add("User-Agent", 
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
         

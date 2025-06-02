@@ -1,53 +1,25 @@
 import { Product, Deal, PriceHistory, DashboardStats, ApiError } from '../types/api';
 
-// Global connection manager to reuse connections
-class ConnectionManager {
-  private static instance: ConnectionManager;
-  private abortController: AbortController | null = null;
-
-  private constructor() {}
-
-  static getInstance(): ConnectionManager {
-    if (!ConnectionManager.instance) {
-      ConnectionManager.instance = new ConnectionManager();
-    }
-    return ConnectionManager.instance;
-  }
-
-  createSignal(timeoutMs: number): AbortSignal {
-    if (this.abortController) {
-      this.abortController.abort();
-    }
-    this.abortController = new AbortController();
-    setTimeout(() => {
-      if (this.abortController) {
-        this.abortController.abort();
-      }
-    }, timeoutMs);
-    return this.abortController.signal;
-  }
-
-  cleanup() {
-    if (this.abortController) {
-      this.abortController.abort();
-      this.abortController = null;
-    }
-  }
+// Simple timeout helper - no shared state to avoid connection conflicts
+function createTimeoutSignal(timeoutMs: number): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+  return controller.signal;
 }
 
 class ApiService {
   private baseUrl: string;
-  private timeoutMs: number = 5000; // Reduced to 5 second timeout
-  private connectionManager: ConnectionManager;
+  private timeoutMs: number = 10000; // Reduced to 10 seconds for faster response
 
   constructor() {
     // Use the same domain as the current page (for .NET integration)
     this.baseUrl = window.location.origin + '/api';
-    this.connectionManager = ConnectionManager.getInstance();
   }
 
   private createTimeoutSignal(timeoutMs: number = this.timeoutMs): AbortSignal {
-    return this.connectionManager.createSignal(timeoutMs);
+    return createTimeoutSignal(timeoutMs);
   }
 
   private async handleResponse<T>(response: Response): Promise<T> {
@@ -74,7 +46,7 @@ class ApiService {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Connection': 'keep-alive', // Use keep-alive connections
+          'Connection': 'close', // Close connections to prevent leaks
         },
         signal: this.createTimeoutSignal(),
         cache: 'no-store', // Prevent caching issues
@@ -83,7 +55,7 @@ class ApiService {
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         const timeoutError: ApiError = {
-          message: 'Request timed out after 5 seconds',
+          message: 'Request timed out after 10 seconds',
           status: 408,
           details: `GET ${endpoint} request timeout`
         };
@@ -98,7 +70,7 @@ class ApiService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Connection': 'keep-alive', // Use keep-alive connections
+          'Connection': 'close', // Close connections to prevent leaks
         },
         body: JSON.stringify(data),
         signal: this.createTimeoutSignal(),
@@ -108,7 +80,7 @@ class ApiService {
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         const timeoutError: ApiError = {
-          message: 'Request timed out after 30 seconds',
+          message: 'Request timed out after 10 seconds',
           status: 408,
           details: `POST ${endpoint} request timeout`
         };
@@ -125,22 +97,22 @@ class ApiService {
   }
 
   async discoverDeals(maxResults: number = 20): Promise<Deal[]> {
-    // Use longer timeout for deal discovery (60 seconds)
+    // Use longer timeout for deal discovery (30 seconds)
     try {
       const response = await fetch(`${this.baseUrl}/deals/discover?maxResults=${maxResults}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Connection': 'keep-alive',
+          'Connection': 'close',
         },
-        signal: this.createTimeoutSignal(60000), // 60 second timeout
+        signal: this.createTimeoutSignal(30000), // 30 second timeout
         cache: 'no-store',
       });
       return await this.handleResponse<Deal[]>(response);
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         const timeoutError: ApiError = {
-          message: 'Deal discovery timed out after 60 seconds',
+          message: 'Deal discovery timed out after 30 seconds',
           status: 408,
           details: 'Deal discovery request timeout - this operation may take longer than expected'
         };
@@ -222,12 +194,12 @@ class ApiService {
   }  // Health check
   async checkHealth(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/products/recent?count=1`, {
+      const response = await fetch(`${this.baseUrl}/dashboard/health`, {
         method: 'GET',
         headers: {
           'Connection': 'close', // Force connection closure
         },
-        signal: this.createTimeoutSignal(5000), // Shorter timeout for health check
+        signal: this.createTimeoutSignal(10000), // 10 second timeout for health check
         cache: 'no-store', // Prevent caching issues
       });
       return response.ok;

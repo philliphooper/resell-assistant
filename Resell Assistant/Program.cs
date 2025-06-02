@@ -35,8 +35,18 @@ builder.Services.Configure<Resell_Assistant.Models.Configuration.EbayApiSettings
 
 // Register eBay API service
 builder.Services.AddScoped<IEbayApiService, EbayApiService>();
-// Register Facebook Marketplace API service
-builder.Services.AddScoped<IFacebookMarketplaceService, FacebookMarketplaceService>();
+
+// Register Facebook Marketplace API service with HttpClient
+builder.Services.AddHttpClient<IFacebookMarketplaceService, FacebookMarketplaceService>(client =>
+{
+    // Configure HttpClient for FacebookMarketplaceService
+    client.Timeout = TimeSpan.FromSeconds(30);
+    client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+    client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.5");
+    client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate");
+    client.DefaultRequestHeaders.Add("Cache-Control", "no-cache");
+    client.DefaultRequestHeaders.Add("Connection", "close"); // Force connection closure
+});
 
 // Add CORS policy for API calls
 builder.Services.AddCors(options =>
