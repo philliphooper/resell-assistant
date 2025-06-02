@@ -1,13 +1,43 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTopDeals, useDashboardStats, useApiHealth } from '../hooks/useApi';
 import DealCard from '../components/DealCard';
 import StatsCard from '../components/StatsCard';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { apiService } from '../services/api';
+import { Deal } from '../types/api';
 
 const Dashboard: React.FC = () => {
   const { data: deals, loading: dealsLoading, error: dealsError, refresh: refreshDeals } = useTopDeals();
   const { data: stats, loading: statsLoading, error: statsError, refresh: refreshStats } = useDashboardStats();
   const { isHealthy } = useApiHealth();
+
+  // Enhanced state for deal discovery
+  const [discoveringDeals, setDiscoveringDeals] = useState(false);
+  const [discoveredDeals, setDiscoveredDeals] = useState<Deal[]>([]);
+  const [realTimeDeals, setRealTimeDeals] = useState<Deal[]>([]);
+  const [activeTab, setActiveTab] = useState<'stored' | 'discovered' | 'realtime'>('stored');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<Deal[]>([]);
+  const [discoveryError, setDiscoveryError] = useState<string | null>(null);
+  const [discoverySuccess, setDiscoverySuccess] = useState<string | null>(null);
+
+  // Auto-refresh real-time deals every 5 minutes
+  useEffect(() => {
+    const fetchRealTimeDeals = async () => {
+      try {
+        const realTime = await apiService.getRealTimeDeals();
+        setRealTimeDeals(realTime);
+      } catch (error) {
+        console.error('Failed to fetch real-time deals:', error);
+      }
+    };
+
+    fetchRealTimeDeals();
+    const interval = setInterval(fetchRealTimeDeals, 5 * 60 * 1000); // 5 minutes
+
+    return () => clearInterval(interval);
+  }, []);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -19,6 +49,128 @@ const Dashboard: React.FC = () => {
   const handleRefresh = () => {
     refreshDeals();
     refreshStats();
+  };
+
+  // Enhanced deal discovery with better error handling and user feedback
+  const discoverNewDeals = async () => {
+    setDiscoveringDeals(true);
+    setDiscoveryError(null);
+    setDiscoverySuccess(null);
+    
+    try {
+      console.log('Starting deal discovery...');
+      const discovered = await apiService.discoverDeals(20);
+      console.log('Deal discovery completed:', discovered);
+      
+      setDiscoveredDeals(discovered);
+      setActiveTab('discovered');
+      
+      if (discovered.length > 0) {
+        const totalProfit = discovered.reduce((sum, deal) => sum + deal.potentialProfit, 0);
+        const avgScore = Math.round(discovered.reduce((sum, deal) => sum + deal.dealScore, 0) / discovered.length);
+        setDiscoverySuccess(
+          `Found ${discovered.length} deals! Total potential profit: ${formatCurrency(totalProfit)} (Avg score: ${avgScore}/100)`
+        );
+      } else {
+        setDiscoveryError('No profitable deals found at this time. Try again later or search for specific items.');
+      }
+    } catch (error) {
+      console.error('Failed to discover deals:', error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('timeout') || error.message.includes('AbortError')) {
+          setDiscoveryError('Deal discovery is taking longer than expected. The process may still be running in the background. Please wait a moment and try again.');
+        } else if (error.message.includes('Network Error') || error.message.includes('fetch')) {
+          setDiscoveryError('Network connection issue. Please check your internet connection and try again.');
+        } else {
+          setDiscoveryError(`Discovery failed: ${error.message}`);
+        }
+      } else {
+        setDiscoveryError('An unexpected error occurred during deal discovery. Please try again.');
+      }
+    } finally {
+      setDiscoveringDeals(false);
+    }
+  };
+
+  const searchForDeals = async () => {
+    if (!searchQuery.trim()) return;
+    
+    setIsSearching(true);
+    try {
+      const results = await apiService.findPriceDiscrepancies(searchQuery, 15);
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Failed to search for deals:', error);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const getCurrentDeals = () => {
+    switch (activeTab) {
+      case 'discovered':
+        return discoveredDeals;
+      case 'realtime':
+        return realTimeDeals;
+      case 'stored':
+      default:
+        return deals || [];
+    }
+  };
+
+  const getCurrentLoading = () => {
+    switch (activeTab) {
+      case 'discovered':
+        return discoveringDeals;
+      case 'realtime':
+        return false;
+      case 'stored':
+      default:
+        return dealsLoading;
+    }
+  };
+
+  // Enhanced deal summary for discovered deals
+  const renderDealSummary = () => {
+    if (activeTab !== 'discovered' || discoveredDeals.length === 0) return null;
+
+    const totalProfit = discoveredDeals.reduce((sum, deal) => sum + deal.potentialProfit, 0);
+    const avgScore = Math.round(discoveredDeals.reduce((sum, deal) => sum + deal.dealScore, 0) / discoveredDeals.length);
+    const topDeal = discoveredDeals.reduce((top, deal) => deal.potentialProfit > top.potentialProfit ? deal : top);
+    const highScoreDeals = discoveredDeals.filter(deal => deal.dealScore >= 80);
+
+    return (
+      <div className="mb-6 p-4 bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900 dark:to-blue-900 rounded-lg border border-green-200 dark:border-green-700">
+        <h4 className="text-lg font-semibold text-green-800 dark:text-green-200 mb-3">Discovery Summary</h4>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="text-center">
+            <p className="text-2xl font-bold text-green-600 dark:text-green-400">{discoveredDeals.length}</p>
+            <p className="text-sm text-green-700 dark:text-green-300">Deals Found</p>
+          </div>
+          <div className="text-center">
+            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{formatCurrency(totalProfit)}</p>
+            <p className="text-sm text-blue-700 dark:text-blue-300">Total Profit</p>
+          </div>
+          <div className="text-center">
+            <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{avgScore}/100</p>
+            <p className="text-sm text-purple-700 dark:text-purple-300">Avg Score</p>
+          </div>
+          <div className="text-center">
+            <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">{highScoreDeals.length}</p>
+            <p className="text-sm text-orange-700 dark:text-orange-300">High Quality</p>
+          </div>
+        </div>
+        {topDeal && (
+          <div className="mt-3 p-3 bg-white dark:bg-gray-800 rounded border">
+            <p className="text-sm font-medium text-gray-900 dark:text-white">🏆 Top Deal:</p>
+            <p className="text-sm text-gray-700 dark:text-gray-300">
+              {topDeal.product?.title || 'Unknown Product'} - {formatCurrency(topDeal.potentialProfit)} profit
+            </p>
+          </div>
+        )}
+      </div>
+    );
   };
 
   // Show API connection status
@@ -51,6 +203,50 @@ const Dashboard: React.FC = () => {
     );
   };
 
+  // Enhanced status messages
+  const renderStatusMessages = () => {
+    return (
+      <>
+        {discoverySuccess && (
+          <div className="mb-4 p-4 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-lg border border-green-300 dark:border-green-700">
+            <div className="flex items-center">
+              <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              <span className="font-medium">{discoverySuccess}</span>
+              <button
+                onClick={() => setDiscoverySuccess(null)}
+                className="ml-auto text-green-600 hover:text-green-800"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {discoveryError && (
+          <div className="mb-4 p-4 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded-lg border border-red-300 dark:border-red-700">
+            <div className="flex items-start">
+              <svg className="w-5 h-5 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <div className="flex-1">
+                <p className="font-medium">Deal Discovery Error</p>
+                <p className="text-sm mt-1">{discoveryError}</p>
+              </div>
+              <button
+                onClick={() => setDiscoveryError(null)}
+                className="ml-2 text-red-600 hover:text-red-800"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -72,8 +268,11 @@ const Dashboard: React.FC = () => {
         </button>
       </div>
 
-      {/* API Status */}
-      {renderApiStatus()}      {/* Stats Cards */}
+      {/* API Status & Status Messages */}
+      {renderApiStatus()}
+      {renderStatusMessages()}
+
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statsLoading ? (
           <div className="col-span-full">
@@ -172,7 +371,99 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         </div>
-      )}      {/* Recent Deals Summary */}
+      )}
+
+      {/* Enhanced Deal Discovery Section */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Deal Discovery</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              Find profitable resale opportunities across marketplaces
+            </p>
+          </div>
+          <button
+            onClick={discoverNewDeals}
+            disabled={discoveringDeals}
+            className={`px-6 py-3 rounded-lg font-medium transition-all duration-200 flex items-center ${
+              discoveringDeals
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-green-600 hover:bg-green-700 hover:scale-105 shadow-lg'
+            } text-white`}
+          >
+            {discoveringDeals ? (
+              <>
+                <svg className="w-5 h-5 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Discovering Deals...
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                Discover Deals
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Search for specific deals */}
+        <div className="mb-4">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search for specific items (e.g., iPhone, MacBook, PlayStation)"
+              className="flex-1 p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              onKeyPress={(e) => e.key === 'Enter' && searchForDeals()}
+            />
+            <button
+              onClick={searchForDeals}
+              disabled={isSearching || !searchQuery.trim()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors duration-200"
+            >
+              {isSearching ? 'Searching...' : 'Search'}
+            </button>
+          </div>
+          {searchResults.length > 0 && (
+            <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900 rounded-lg">
+              <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
+                Found {searchResults.length} deal{searchResults.length !== 1 ? 's' : ''} for "{searchQuery}"
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {searchResults.slice(0, 4).map((deal) => (
+                  <div key={deal.id} className="p-3 bg-white dark:bg-gray-800 rounded border">
+                    <p className="font-medium text-sm text-gray-900 dark:text-white truncate">
+                      {deal.product?.title || 'Unknown Product'}
+                    </p>
+                    <p className="text-green-600 dark:text-green-400 text-sm">
+                      Profit: {formatCurrency(deal.potentialProfit)} ({deal.dealScore}/100)
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Discovery Tips */}
+        {!discoveringDeals && discoveredDeals.length === 0 && (
+          <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <h4 className="font-medium text-gray-900 dark:text-white mb-2">💡 Discovery Tips</h4>
+            <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+              <li>• Deal discovery analyzes trending items across multiple marketplaces</li>
+              <li>• Process typically takes 30-60 seconds to find the best opportunities</li>
+              <li>• High-quality deals (80+ score) indicate strong profit potential</li>
+              <li>• Use the search function above to find deals for specific products</li>
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {/* Recent Deals Summary */}
       {stats && stats.recentDeals && stats.recentDeals.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
           <div className="flex justify-between items-center mb-4">
@@ -218,13 +509,63 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Top Deals */}
+      {/* Top Deals with Enhanced Tabs */}
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Top Deals</h2>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Deals</h2>
+          <div className="flex space-x-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+            <button
+              onClick={() => setActiveTab('stored')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'stored'
+                  ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              Stored ({deals?.length || 0})
+            </button>
+            <button
+              onClick={() => setActiveTab('discovered')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors relative ${
+                activeTab === 'discovered'
+                  ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              Discovered ({discoveredDeals.length})
+              {discoveredDeals.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('realtime')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors relative ${
+                activeTab === 'realtime'
+                  ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              Real-time ({realTimeDeals.length})
+              {realTimeDeals.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></span>
+              )}
+            </button>
+          </div>
+        </div>
         
-        {dealsLoading ? (
-          <LoadingSpinner text="Loading top deals..." className="py-12" />
-        ) : dealsError ? (
+        {/* Deal Summary for discovered deals */}
+        {renderDealSummary()}
+        
+        {getCurrentLoading() ? (
+          <div className="text-center py-12">
+            <LoadingSpinner text={`Finding ${activeTab} deals...`} className="py-8" />
+            {activeTab === 'discovered' && (
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-4">
+                This process analyzes trending items across multiple marketplaces...
+              </p>
+            )}
+          </div>
+        ) : dealsError && activeTab === 'stored' ? (
           <div className="bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 p-6 rounded-lg">
             <h3 className="font-medium">Failed to load deals</h3>
             <p className="text-sm mt-1">{dealsError.message}</p>
@@ -235,27 +576,45 @@ const Dashboard: React.FC = () => {
               Try again
             </button>
           </div>
-        ) : deals && deals.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-            {deals.slice(0, 6).map((deal) => (
-              <DealCard
-                key={deal.id}
-                deal={deal}
-                onViewDetails={(deal) => {
-                  console.log('View details for deal:', deal);
-                  // TODO: Implement deal details modal or navigation
-                }}
-              />
-            ))}
-          </div>
+        ) : getCurrentDeals().length > 0 ? (
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              {getCurrentDeals().slice(0, 6).map((deal) => (
+                <DealCard
+                  key={deal.id}
+                  deal={deal}
+                  onViewDetails={(deal) => {
+                    console.log('View details for deal:', deal);
+                    // TODO: Implement deal details modal or navigation
+                  }}
+                />
+              ))}
+            </div>
+            {getCurrentDeals().length > 6 && (
+              <div className="mt-6 text-center">
+                <p className="text-gray-600 dark:text-gray-400 mb-4">
+                  Showing 6 of {getCurrentDeals().length} deals
+                </p>
+                <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                  View All Deals
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <div className="text-center py-12">
             <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
             </svg>
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white">No deals found</h3>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+              {activeTab === 'discovered' ? 'No deals discovered yet' : 
+               activeTab === 'realtime' ? 'No real-time deals found' : 
+               'No deals found'}
+            </h3>
             <p className="text-gray-600 dark:text-gray-400 mt-1">
-              Check back later for new opportunities or try refreshing the data.
+              {activeTab === 'discovered' ? 'Click "Discover Deals" to find new opportunities' :
+               activeTab === 'realtime' ? 'Real-time deals will appear here automatically' :
+               'Check back later for new opportunities or try refreshing the data.'}
             </p>
           </div>
         )}

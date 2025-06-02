@@ -43,25 +43,55 @@ namespace Resell_Assistant.Services
                 deals.Add(deal);
             }
             return deals.OrderByDescending(d => d.DealScore).ToList();
-        }
-
-        public async Task<decimal> EstimateSellingPriceAsync(Product product)
+        }        public async Task<decimal> EstimateSellingPriceAsync(Product product)
         {
-            // Simple estimation logic - in a real app, this would use market data
+            // Enhanced estimation logic with cross-marketplace analysis
             var priceHistory = await GetPriceHistoryAsync(product.Id);
             
             if (priceHistory.Any())
             {
-                var avgPrice = priceHistory.Average(p => p.Price);
-                return avgPrice * 1.1m; // Add 10% markup
+                var recentPrices = priceHistory
+                    .Where(p => p.RecordedAt > DateTime.UtcNow.AddDays(-30))
+                    .ToList();
+                    
+                if (recentPrices.Any())
+                {
+                    var avgPrice = recentPrices.Average(p => p.Price);
+                    var maxPrice = recentPrices.Max(p => p.Price);
+                    
+                    // Use weighted average favoring recent higher prices
+                    return (avgPrice * 0.7m) + (maxPrice * 0.3m);
+                }
             }
 
-            // Basic estimation based on product type and condition
+            // Cross-marketplace price analysis
+            var similarProducts = await FindSimilarProductsAsync(product);
+            if (similarProducts.Any())
+            {
+                var marketplacePrices = similarProducts
+                    .GroupBy(p => p.Marketplace)
+                    .Select(g => new { 
+                        Marketplace = g.Key, 
+                        AvgPrice = g.Average(p => p.Price + p.ShippingCost),
+                        MaxPrice = g.Max(p => p.Price + p.ShippingCost)
+                    })
+                    .ToList();
+
+                if (marketplacePrices.Any())
+                {
+                    // Target the marketplace with highest average selling price
+                    var bestMarketplace = marketplacePrices.OrderByDescending(m => m.AvgPrice).First();
+                    return bestMarketplace.AvgPrice * 0.95m; // Slight discount for quick sale
+                }
+            }
+
+            // Fallback to enhanced basic estimation
             var basePrice = product.Price;
             var conditionMultiplier = GetConditionMultiplier(product.Condition);
             var marketplaceMultiplier = GetMarketplaceMultiplier(product.Marketplace);
+            var categoryMultiplier = GetCategoryMultiplier(product.Title);
 
-            return basePrice * conditionMultiplier * marketplaceMultiplier;
+            return basePrice * conditionMultiplier * marketplaceMultiplier * categoryMultiplier;
         }
 
         public Task<int> CalculateDealScoreAsync(Product product, decimal estimatedSellPrice)
@@ -176,9 +206,7 @@ namespace Resell_Assistant.Services
                 confidence -= 20;
 
             return Math.Max(Math.Min(confidence, 100), 0);
-        }
-
-        private string GenerateReasoning(Product product, decimal estimatedSellPrice, decimal potentialProfit, int dealScore)
+        }        private string GenerateReasoning(Product product, decimal estimatedSellPrice, decimal potentialProfit, int dealScore)
         {
             var reasons = new List<string>();
             
@@ -207,6 +235,82 @@ namespace Resell_Assistant.Services
                 reasons.Add("Good deal score with solid profit potential");
             
             return string.Join(". ", reasons);
+        }
+
+        private async Task<List<Product>> FindSimilarProductsAsync(Product product)
+        {
+            var keywords = ExtractKeywords(product.Title);
+            var primaryKeywords = keywords.Take(3).ToList();
+
+            if (!primaryKeywords.Any())
+                return new List<Product>();
+
+            var searchTerms = string.Join(" ", primaryKeywords);
+            
+            // Search for similar products in database
+            var similarProducts = await _context.Products
+                .Where(p => p.Id != product.Id && 
+                           p.Title.ToLower().Contains(searchTerms.ToLower()))
+                .Where(p => p.CreatedAt > DateTime.UtcNow.AddDays(-90)) // Recent listings only
+                .Take(20)
+                .ToListAsync();
+
+            // Filter by similarity score
+            return similarProducts
+                .Where(p => CalculateSimilarityScore(product.Title, p.Title) >= 0.4)
+                .ToList();
+        }
+
+        private List<string> ExtractKeywords(string title)
+        {
+            if (string.IsNullOrEmpty(title))
+                return new List<string>();
+
+            var commonWords = new[] { "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by", "new", "used", "excellent", "good", "fair" };
+            
+            return title.ToLower()
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(word => !commonWords.Contains(word) && word.Length > 2)
+                .Distinct()
+                .ToList();
+        }
+
+        private double CalculateSimilarityScore(string title1, string title2)
+        {
+            var keywords1 = ExtractKeywords(title1);
+            var keywords2 = ExtractKeywords(title2);
+
+            if (!keywords1.Any() || !keywords2.Any())
+                return 0;
+
+            var commonKeywords = keywords1.Intersect(keywords2).Count();
+            var totalKeywords = keywords1.Union(keywords2).Count();
+
+            return (double)commonKeywords / totalKeywords;
+        }
+
+        private decimal GetCategoryMultiplier(string title)
+        {
+            var titleLower = title.ToLower();
+            
+            // Electronics categories with high resale value
+            if (titleLower.Contains("iphone") || titleLower.Contains("airpods") || titleLower.Contains("macbook"))
+                return 1.4m;
+                
+            if (titleLower.Contains("playstation") || titleLower.Contains("xbox") || titleLower.Contains("nintendo"))
+                return 1.3m;
+                
+            if (titleLower.Contains("laptop") || titleLower.Contains("tablet") || titleLower.Contains("camera"))
+                return 1.25m;
+                
+            if (titleLower.Contains("watch") || titleLower.Contains("headphones") || titleLower.Contains("speaker"))
+                return 1.2m;
+                
+            // Fashion and accessories
+            if (titleLower.Contains("designer") || titleLower.Contains("luxury") || titleLower.Contains("vintage"))
+                return 1.3m;
+                
+            return 1.1m; // Default multiplier
         }
     }
 }

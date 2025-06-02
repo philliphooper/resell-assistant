@@ -23,6 +23,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddScoped<IMarketplaceService, MarketplaceService>();
 builder.Services.AddScoped<IPriceAnalysisService, PriceAnalysisService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IDealDiscoveryService, DealDiscoveryService>();
 
 // Register credential management services
 builder.Services.AddScoped<IEncryptionService, EncryptionService>();

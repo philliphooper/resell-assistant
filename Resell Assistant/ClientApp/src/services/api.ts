@@ -121,7 +121,76 @@ class ApiService {
 
   // Product endpoints
   async getTopDeals(): Promise<Deal[]> {
-    return this.get<Deal[]>('/products/top-deals');
+    return this.get<Deal[]>('/deals/top');
+  }
+
+  async discoverDeals(maxResults: number = 20): Promise<Deal[]> {
+    // Use longer timeout for deal discovery (60 seconds)
+    try {
+      const response = await fetch(`${this.baseUrl}/deals/discover?maxResults=${maxResults}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Connection': 'keep-alive',
+        },
+        signal: this.createTimeoutSignal(60000), // 60 second timeout
+        cache: 'no-store',
+      });
+      return await this.handleResponse<Deal[]>(response);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        const timeoutError: ApiError = {
+          message: 'Deal discovery timed out after 60 seconds',
+          status: 408,
+          details: 'Deal discovery request timeout - this operation may take longer than expected'
+        };
+        throw timeoutError;
+      }
+      console.error('API discoverDeals failed:', error);
+      throw error;
+    }
+  }
+
+  async findPriceDiscrepancies(query: string, minProfitMargin: number = 15): Promise<Deal[]> {
+    const params = new URLSearchParams({ 
+      query, 
+      minProfitMargin: minProfitMargin.toString() 
+    });
+    return this.get<Deal[]>(`/deals/price-discrepancies?${params.toString()}`);
+  }
+
+  async getRealTimeDeals(): Promise<Deal[]> {
+    return this.get<Deal[]>('/deals/real-time');
+  }
+
+  async getFilteredDeals(filters: {
+    minScore?: number;
+    minProfit?: number;
+    marketplace?: string;
+    limit?: number;
+  }): Promise<Deal[]> {
+    const params = new URLSearchParams();
+    if (filters.minScore !== undefined) params.append('minScore', filters.minScore.toString());
+    if (filters.minProfit !== undefined) params.append('minProfit', filters.minProfit.toString());
+    if (filters.marketplace) params.append('marketplace', filters.marketplace);
+    if (filters.limit !== undefined) params.append('limit', filters.limit.toString());
+    
+    return this.get<Deal[]>(`/deals/filtered?${params.toString()}`);
+  }
+
+  async getDealStats(): Promise<{
+    totalDeals: number;
+    averageScore: number;
+    totalPotentialProfit: number;
+    highValueDeals: number;
+    marketplaceBreakdown: Array<{ marketplace: string; count: number }>;
+    recentDeals: number;
+  }> {
+    return this.get('/deals/stats');
+  }
+
+  async analyzeProductForDeal(productId: number): Promise<Deal> {
+    return this.post<Deal>(`/deals/analyze/${productId}`, {});
   }
 
   async getRecentProducts(count: number = 10): Promise<Product[]> {

@@ -6,8 +6,7 @@ using Resell_Assistant.Filters;
 
 namespace Resell_Assistant.Controllers
 {    [ApiController]
-    [Route("api/[controller]")]
-    public class ProductsController : ControllerBase
+    [Route("api/[controller]")]    public class ProductsController : ControllerBase
     {
         private readonly IMarketplaceService _marketplaceService;
         private readonly IPriceAnalysisService _priceAnalysisService;
@@ -16,7 +15,7 @@ namespace Resell_Assistant.Controllers
         {
             _marketplaceService = marketplaceService;
             _priceAnalysisService = priceAnalysisService;
-        }        [HttpGet("search")]
+        }[HttpGet("search")]
         public async Task<ActionResult<List<Product>>> SearchProducts([FromQuery] ProductSearchRequest request)
         {
             var products = await _marketplaceService.SearchProductsAsync(request.Query, request.Marketplace);
