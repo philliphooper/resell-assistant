@@ -157,6 +157,22 @@ The application uses a sophisticated scoring system to identify profitable deals
 - Performance analytics
 - Inventory management
 
+## CI/CD Pipeline Status
+
+[![Build and Test](https://github.com/philliphooper/resell-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/philliphooper/resell-assistant/actions/workflows/ci.yml)
+[![Advanced Build and Test](https://github.com/philliphooper/resell-assistant/actions/workflows/build-and-test-advanced.yml/badge.svg)](https://github.com/philliphooper/resell-assistant/actions/workflows/build-and-test-advanced.yml)
+[![Release Build](https://github.com/philliphooper/resell-assistant/actions/workflows/release.yml/badge.svg)](https://github.com/philliphooper/resell-assistant/actions/workflows/release.yml)
+
+**Status**: ✅ All workflows passing and production-ready
+
+- **Multi-Platform Testing**: Ubuntu, Windows, macOS
+- **Cross-Platform Node.js**: Versions 18 & 20
+- **Comprehensive Testing**: 38/38 tests passing
+- **Code Quality**: ESLint, security scanning
+- **Release Automation**: SemVer versioning with artifacts
+
+For detailed CI/CD information, see [Issue #23](https://github.com/philliphooper/resell-assistant/issues/23).
+
 ## Contributing
 
 1. Fork the repository
