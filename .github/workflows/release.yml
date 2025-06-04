@@ -78,9 +78,7 @@ jobs:
             --no-build \
             --verbosity normal \
             --logger trx \
-            --results-directory ./TestResults
-
-      - name: Publish application
+            --results-directory ./TestResults      - name: Publish application
         run: |
           dotnet publish "${{ env.MAIN_PROJECT_PATH }}" \
             --configuration Release \
@@ -89,7 +87,7 @@ jobs:
             --runtime linux-x64 \
             --self-contained false \
             -p:Version=${{ steps.version.outputs.version }} \
-            -p:PublishReadyToRun=true \
+            -p:PublishReadyToRun=false \
             -p:PublishSingleFile=false
 
       - name: Create release archive
