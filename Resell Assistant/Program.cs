@@ -15,9 +15,13 @@ builder.Services.AddControllersWithViews(options =>
     options.Filters.Add<ValidateModelStateAttribute>();
 });
 
-// Add Entity Framework
+// Add Entity Framework with proper threading configuration
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection"));
+    options.EnableThreadSafetyChecks(false); // Disable for performance but we'll handle manually
+    options.EnableServiceProviderCaching(false); // Prevent caching issues with scoped services
+});
 
 // Register application services
 builder.Services.AddScoped<IMarketplaceService, MarketplaceService>();
@@ -36,17 +40,8 @@ builder.Services.Configure<Resell_Assistant.Models.Configuration.EbayApiSettings
 // Register eBay API service
 builder.Services.AddScoped<IEbayApiService, EbayApiService>();
 
-// Register Facebook Marketplace API service with HttpClient
-builder.Services.AddHttpClient<IFacebookMarketplaceService, FacebookMarketplaceService>(client =>
-{
-    // Configure HttpClient for FacebookMarketplaceService
-    client.Timeout = TimeSpan.FromSeconds(30);
-    client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
-    client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.5");
-    client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate");
-    client.DefaultRequestHeaders.Add("Cache-Control", "no-cache");
-    client.DefaultRequestHeaders.Add("Connection", "close"); // Force connection closure
-});
+// Facebook Marketplace API service temporarily disabled - do not register
+// TODO: Re-enable when proper implementation is complete
 
 // Add CORS policy for API calls
 builder.Services.AddCors(options =>

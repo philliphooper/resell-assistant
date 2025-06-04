@@ -33,7 +33,7 @@ const Dashboard: React.FC = () => {
     listingsPerProduct: 5,
     searchTerms: '',
     minProfitMargin: 15,
-    preferredMarketplaces: ['eBay', 'Facebook Marketplace'],
+    preferredMarketplaces: ['eBay'], // Facebook Marketplace temporarily disabled
     enableNotifications: true,
   });
 
@@ -394,20 +394,18 @@ const Dashboard: React.FC = () => {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Active Alerts</h3>
             <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">{stats.activeAlerts}</p>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Monitoring deals</p>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
+          </div>          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Top Categories</h3>
             <div className="space-y-1">
-              {stats.topCategories.slice(0, 3).map((category, index) => (
+              {stats.topCategories?.slice(0, 3).map((category, index) => (
                 <div key={category} className="flex items-center">
                   <span className={`inline-block w-2 h-2 rounded-full mr-2 ${
                     index === 0 ? 'bg-blue-500' : index === 1 ? 'bg-green-500' : 'bg-yellow-500'
                   }`}></span>
                   <span className="text-sm text-gray-700 dark:text-gray-300">{category}</span>
                 </div>
-              ))}
-              {stats.topCategories.length === 0 && (
+              )) || []}
+              {(!stats.topCategories || stats.topCategories.length === 0) && (
                 <span className="text-sm text-gray-500 dark:text-gray-400">No categories found</span>
               )}
             </div>

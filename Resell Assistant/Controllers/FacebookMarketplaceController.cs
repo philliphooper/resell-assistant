@@ -4,6 +4,10 @@ using Resell_Assistant.Models;
 
 namespace Resell_Assistant.Controllers;
 
+/*
+// Facebook Marketplace controller temporarily disabled
+// TODO: Re-enable when proper implementation is complete
+
 [ApiController]
 [Route("api/[controller]")]
 public class FacebookMarketplaceController : ControllerBase
@@ -24,3 +28,4 @@ public class FacebookMarketplaceController : ControllerBase
         return Ok(results);
     }
 }
+*/

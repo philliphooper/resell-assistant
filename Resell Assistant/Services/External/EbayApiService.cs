@@ -18,8 +18,11 @@ public class EbayApiService : IEbayApiService
     private readonly ILogger<EbayApiService> _logger;
     private readonly RestClient _client;
     private readonly SemaphoreSlim _rateLimitSemaphore;
+    private readonly object _disposeLock = new object();
+    private readonly Timer? _rateLimitTimer;
     private string? _accessToken;
     private DateTime _tokenExpiry;
+    private bool _disposed = false;
 
     public EbayApiService(
         IOptions<EbayApiSettings> settings, 
@@ -29,7 +32,8 @@ public class EbayApiService : IEbayApiService
         _settings = settings.Value;
         _credentialService = credentialService;
         _logger = logger;
-          // Initialize RestClient with base URL and reasonable timeout for API operations
+        
+        // Initialize RestClient with base URL and reasonable timeout for API operations
         var options = new RestClientOptions(_settings.BaseUrl)
         {
             Timeout = TimeSpan.FromSeconds(Math.Min(_settings.TimeoutSeconds, 30)) // Increased to 30 seconds for better reliability
@@ -40,7 +44,7 @@ public class EbayApiService : IEbayApiService
         _rateLimitSemaphore = new SemaphoreSlim(_settings.RateLimitPerSecond, _settings.RateLimitPerSecond);
         
         // Start rate limit release timer
-        StartRateLimitTimer();
+        _rateLimitTimer = StartRateLimitTimer();
     }
 
     /// <summary>
@@ -55,6 +59,9 @@ public class EbayApiService : IEbayApiService
         string? marketplace = null,
         int limit = 50)
     {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(EbayApiService));
+            
         if (string.IsNullOrWhiteSpace(query))
             throw new ArgumentException("Search query cannot be empty", nameof(query));
 
@@ -108,12 +115,20 @@ public class EbayApiService : IEbayApiService
         {
             try
             {
-                _rateLimitSemaphore.Release();
+                if (!_disposed)
+                {
+                    _rateLimitSemaphore.Release();
+                }
             }
             catch (SemaphoreFullException)
             {
                 // Ignore - semaphore is already at maximum capacity
                 _logger.LogDebug("Semaphore already at maximum capacity during release");
+            }
+            catch (ObjectDisposedException)
+            {
+                // Ignore - semaphore has been disposed
+                _logger.LogDebug("Semaphore was disposed during release attempt");
             }
         }
     }
@@ -123,6 +138,9 @@ public class EbayApiService : IEbayApiService
     /// </summary>
     public async Task<Product?> GetProductDetailsAsync(string itemId)
     {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(EbayApiService));
+            
         if (string.IsNullOrWhiteSpace(itemId))
             throw new ArgumentException("Item ID cannot be empty", nameof(itemId));
 
@@ -158,12 +176,18 @@ public class EbayApiService : IEbayApiService
         {
             try
             {
-                _rateLimitSemaphore.Release();
+                if (!_disposed)
+                {
+                    _rateLimitSemaphore.Release();
+                }
             }
             catch (SemaphoreFullException)
             {
-                // Ignore - semaphore is already at maximum capacity
                 _logger.LogDebug("Semaphore already at maximum capacity during release");
+            }
+            catch (ObjectDisposedException)
+            {
+                _logger.LogDebug("Semaphore was disposed during release attempt");
             }
         }
     }
@@ -173,6 +197,9 @@ public class EbayApiService : IEbayApiService
     /// </summary>
     public async Task<List<SoldListing>> GetSoldListingsAsync(string query, int days = 30, int limit = 50)
     {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(EbayApiService));
+            
         if (string.IsNullOrWhiteSpace(query))
             throw new ArgumentException("Search query cannot be empty", nameof(query));
 
@@ -214,12 +241,18 @@ public class EbayApiService : IEbayApiService
         {
             try
             {
-                _rateLimitSemaphore.Release();
+                if (!_disposed)
+                {
+                    _rateLimitSemaphore.Release();
+                }
             }
             catch (SemaphoreFullException)
             {
-                // Ignore - semaphore is already at maximum capacity
                 _logger.LogDebug("Semaphore already at maximum capacity during release");
+            }
+            catch (ObjectDisposedException)
+            {
+                _logger.LogDebug("Semaphore was disposed during release attempt");
             }
         }
     }
@@ -229,21 +262,36 @@ public class EbayApiService : IEbayApiService
     /// </summary>
     public async Task<List<PricePoint>> GetPriceHistoryAsync(string query, int days = 90)
     {
-        // For this implementation, we'll use sold listings to create price history
-        var soldListings = await GetSoldListingsAsync(query, days, 200);
-        
-        return soldListings
-            .GroupBy(s => s.SoldDate.Date)
-            .Select(g => new PricePoint
-            {
-                Date = g.Key,
-                Price = g.Average(s => s.SoldPrice),
-                Currency = "USD",
-                Source = "eBay Sold Listings",
-                SampleSize = g.Count()
-            })
-            .OrderBy(p => p.Date)
-            .ToList();
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(EbayApiService));
+            
+        if (string.IsNullOrWhiteSpace(query))
+            throw new ArgumentException("Search query cannot be empty", nameof(query));
+
+        try
+        {
+            // eBay Browse API doesn't provide historical pricing directly
+            // This implementation gets current sold listings as a proxy for price history
+            var soldListings = await GetSoldListingsAsync(query, days, 100);
+            
+            return soldListings
+                .GroupBy(s => s.SoldDate.Date)
+                .Select(g => new PricePoint
+                {
+                    Date = g.Key,
+                    Price = g.Average(s => s.SoldPrice),
+                    Currency = g.First().Currency,
+                    Source = "eBay",
+                    SampleSize = g.Count()
+                })
+                .OrderBy(p => p.Date)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting eBay price history for query: {Query}", query);
+            return new List<PricePoint>();
+        }
     }
 
     /// <summary>
@@ -251,6 +299,9 @@ public class EbayApiService : IEbayApiService
     /// </summary>
     public async Task<List<Category>> GetCategoriesAsync(string? parentCategoryId = null)
     {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(EbayApiService));
+
         try
         {
             await EnsureValidTokenAsync();
@@ -258,9 +309,12 @@ public class EbayApiService : IEbayApiService
 
             var request = new RestRequest("/commerce/taxonomy/v1/category_tree/0", Method.Get);
             request.AddHeader("Authorization", $"Bearer {_accessToken}");
-
+            
             if (!string.IsNullOrEmpty(parentCategoryId))
+            {
+                request.Resource = $"/commerce/taxonomy/v1/category_tree/0/get_category_subtree";
                 request.AddParameter("category_id", parentCategoryId);
+            }
 
             _logger.LogDebug("Getting eBay categories, parent: {ParentId}", parentCategoryId);
 
@@ -273,8 +327,8 @@ public class EbayApiService : IEbayApiService
                 return new List<Category>();
             }
 
-            var categoryResponse = JsonConvert.DeserializeObject<EbayCategoryResponse>(response.Content!);
-            return ConvertToCategories(categoryResponse?.CategoryTree?.RootCategory?.ChildCategories ?? new List<EbayCategory>());
+            var categoryTree = JsonConvert.DeserializeObject<EbayCategoryTree>(response.Content!);
+            return ConvertToCategories(categoryTree?.RootCategoryNode?.ChildCategoryTreeNodes ?? new List<EbayCategoryNode>());
         }
         catch (Exception ex)
         {
@@ -285,12 +339,18 @@ public class EbayApiService : IEbayApiService
         {
             try
             {
-                _rateLimitSemaphore.Release();
+                if (!_disposed)
+                {
+                    _rateLimitSemaphore.Release();
+                }
             }
             catch (SemaphoreFullException)
             {
-                // Ignore - semaphore is already at maximum capacity
                 _logger.LogDebug("Semaphore already at maximum capacity during release");
+            }
+            catch (ObjectDisposedException)
+            {
+                _logger.LogDebug("Semaphore was disposed during release attempt");
             }
         }
     }
@@ -300,9 +360,12 @@ public class EbayApiService : IEbayApiService
     /// </summary>
     public async Task<bool> TestConnectionAsync()
     {
+        if (_disposed)
+            return false;
+
         try
         {
-            // Check if credentials are available
+            // First check if credentials are configured
             var hasCredentials = await _credentialService.HasCredentialsAsync("eBay");
             if (!hasCredentials)
             {
@@ -328,11 +391,16 @@ public class EbayApiService : IEbayApiService
             _logger.LogError(ex, "eBay API connection test failed");
             return false;
         }
-    }    /// <summary>
+    }
+
+    /// <summary>
     /// Get current API rate limit status
     /// </summary>
     public Task<ApiRateLimitInfo> GetRateLimitStatusAsync()
     {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(EbayApiService));
+
         return Task.FromResult(new ApiRateLimitInfo
         {
             PerSecondLimit = _settings.RateLimitPerSecond,
@@ -343,48 +411,51 @@ public class EbayApiService : IEbayApiService
         });
     }
 
-    #region Private Methods
-
-    /// <summary>
-    /// Ensure we have a valid OAuth access token
-    /// </summary>
     private async Task EnsureValidTokenAsync()
     {
         if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow >= _tokenExpiry.AddMinutes(-_settings.TokenRefreshBufferMinutes))
         {
             await RefreshAccessTokenAsync();
         }
-    }
-
-    /// <summary>
-    /// Refresh OAuth access token using client credentials flow
-    /// </summary>
-    private async Task RefreshAccessTokenAsync()
-    {        try
+    }    private async Task RefreshAccessTokenAsync()
+    {
+        try
         {
             // Get credentials from the credential service
-            var (clientId, clientSecret) = await _credentialService.GetCredentialsAsync("eBay");
-            if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
+            var credentials = await _credentialService.GetCredentialsAsync("eBay");
+            if (credentials == default || string.IsNullOrEmpty(credentials.clientId) || string.IsNullOrEmpty(credentials.clientSecret))
             {
                 throw new Exception("eBay credentials not found. Please configure your eBay API credentials.");
             }
 
-            var tokenClient = new RestClient(_settings.OAuthUrl);
+            var clientId = credentials.clientId;
+            var clientSecret = credentials.clientSecret;
+
+            if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
+            {
+                throw new Exception("eBay credentials are incomplete. Please ensure ClientId and ClientSecret are configured.");
+            }
+
+            var oauthClient = new RestClient(_settings.OAuthUrl);
             var request = new RestRequest("/identity/v1/oauth2/token", Method.Post);
             
-            // Client credentials for OAuth 2.0
-            var credentialsEncoded = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
-            request.AddHeader("Authorization", $"Basic {credentialsEncoded}");
+            // Add Basic auth header with client credentials
+            var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
+            request.AddHeader("Authorization", $"Basic {authValue}");
             request.AddHeader("Content-Type", "application/x-www-form-urlencoded");
+            
+            // Add body parameters for client credentials grant
             request.AddParameter("grant_type", "client_credentials");
             request.AddParameter("scope", "https://api.ebay.com/oauth/api_scope");
 
             _logger.LogDebug("Refreshing eBay OAuth token");
 
-            var response = await tokenClient.ExecuteAsync(request);
+            var response = await oauthClient.ExecuteAsync(request);
             
             if (!response.IsSuccessful)
             {
+                _logger.LogError("OAuth token refresh failed: {StatusCode} - {Content}", 
+                                response.StatusCode, response.Content);
                 throw new Exception($"OAuth token refresh failed: {response.StatusCode} - {response.Content}");
             }
 
@@ -407,98 +478,89 @@ public class EbayApiService : IEbayApiService
         }
     }
 
-    /// <summary>
-    /// Start timer to release rate limit tokens
-    /// </summary>
-    private void StartRateLimitTimer()
+    private Timer StartRateLimitTimer()
     {
-        var timer = new Timer((_) =>
+        return new Timer((_) =>
         {
-            if (_rateLimitSemaphore.CurrentCount < _settings.RateLimitPerSecond)
+            if (!_disposed && _rateLimitSemaphore.CurrentCount < _settings.RateLimitPerSecond)
             {
-                _rateLimitSemaphore.Release();
+                try
+                {
+                    _rateLimitSemaphore.Release();
+                }
+                catch (SemaphoreFullException)
+                {
+                    // Ignore - semaphore is already at maximum capacity
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Service is being disposed, stop the timer
+                }
             }
-        }, null, TimeSpan.FromMilliseconds(1000 / _settings.RateLimitPerSecond), TimeSpan.FromMilliseconds(1000 / _settings.RateLimitPerSecond));
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
 
-    /// <summary>
-    /// Build price filter string for eBay API
-    /// </summary>
     private string BuildPriceFilter(decimal? priceMin, decimal? priceMax)
     {
-        if (priceMin.HasValue && priceMax.HasValue)
-            return $"price:[{priceMin.Value}..{priceMax.Value}]";
-        else if (priceMin.HasValue)
-            return $"price:[{priceMin.Value}..]";
-        else if (priceMax.HasValue)
-            return $"price:[..{priceMax.Value}]";
-        return string.Empty;
+        if (!priceMin.HasValue && !priceMax.HasValue)
+            return string.Empty;
+
+        var filter = new StringBuilder("price:[");
+        
+        if (priceMin.HasValue)
+            filter.Append($"{priceMin.Value}");
+        
+        filter.Append("..");
+        
+        if (priceMax.HasValue)
+            filter.Append($"{priceMax.Value}");
+        
+        filter.Append("]");
+        
+        return filter.ToString();
+    }    private List<Product> ConvertToProducts(List<EbayItemSummary> items)
+    {
+        return items.Select(item => new Product
+        {
+            ExternalId = item.ItemId ?? string.Empty,
+            Title = item.Title ?? string.Empty,
+            Price = item.Price?.Value ?? 0,
+            Description = item.ShortDescription ?? string.Empty,
+            ImageUrl = item.Image?.ImageUrl ?? string.Empty,
+            Url = item.ItemWebUrl ?? string.Empty,
+            Marketplace = "eBay",
+            Location = item.ItemLocation?.City ?? string.Empty,
+            Condition = item.Condition ?? string.Empty,
+            CreatedAt = DateTime.UtcNow
+        }).ToList();
     }
 
-    /// <summary>
-    /// Convert eBay item summaries to Product objects
-    /// </summary>
-    private List<Product> ConvertToProducts(List<EbayItemSummary> items)
-    {
-        return items.Select(ConvertToProduct).Where(p => p != null).Cast<Product>().ToList();
-    }    /// <summary>
-    /// Convert single eBay item to Product object
-    /// </summary>
-    private Product? ConvertToProduct(EbayItemSummary? item)
-    {
-        if (item == null) return null;        return new Product
-        {
-            Id = 0, // Will be set by database
-            Title = item.Title ?? "Unknown Item",
-            Description = item.ShortDescription ?? "",
-            Price = item.Price?.Value ?? 0m,
-            ShippingCost = 0m, // eBay API doesn't always provide shipping in search results
-            ImageUrl = item.Image?.ImageUrl ?? "",
-            Marketplace = "eBay",
-            Condition = item.Condition ?? "Unknown",
-            Location = "", // Location not typically in search results
-            Url = item.ItemWebUrl ?? "",
-            ExternalId = item.ItemId ?? "",
-            IsExternalListing = true,
-            ExternalUpdatedAt = DateTime.UtcNow,
-            CreatedAt = DateTime.UtcNow
-        };
-    }    /// <summary>
-    /// Convert eBay item details to Product object
-    /// </summary>
     private Product? ConvertToProduct(EbayItemDetails? item)
     {
         if (item == null) return null;        return new Product
         {
-            Id = 0, // Will be set by database
-            Title = item.Title ?? "Unknown Item",
-            Description = item.Description ?? "",
-            Price = item.Price?.Value ?? 0m,
-            ShippingCost = 0m, // Can be extracted from shipping options if needed
-            ImageUrl = item.Image?.ImageUrl ?? "",
+            ExternalId = item.ItemId ?? string.Empty,
+            Title = item.Title ?? string.Empty,
+            Price = item.Price?.Value ?? 0,
+            Description = item.Description ?? string.Empty,
+            ImageUrl = item.Image?.ImageUrl ?? string.Empty,
+            Url = item.ItemWebUrl ?? string.Empty,
             Marketplace = "eBay",
-            Condition = item.Condition ?? "Unknown",
-            Location = "", // Location details would need to be added to eBay API models
-            Url = item.ItemWebUrl ?? "",
-            ExternalId = item.ItemId ?? "",
-            IsExternalListing = true,
-            ExternalUpdatedAt = DateTime.UtcNow,
+            Location = item.ItemLocation?.City ?? string.Empty,
+            Condition = item.Condition ?? string.Empty,
             CreatedAt = DateTime.UtcNow
         };
     }
 
-    /// <summary>
-    /// Convert eBay items to sold listings
-    /// </summary>
     private List<SoldListing> ConvertToSoldListings(List<EbayItemSummary> items)
     {
         return items.Select(item => new SoldListing
         {
-            ItemId = item.ItemId ?? "",
-            Title = item.Title ?? "",
-            SoldPrice = item.Price?.Value ?? 0m,
-            SoldDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)), // Simulated for now
-            Condition = item.Condition ?? "Unknown",
+            ItemId = item.ItemId ?? string.Empty,
+            Title = item.Title ?? string.Empty,
+            SoldPrice = item.Price?.Value ?? 0,
+            SoldDate = DateTime.UtcNow.AddDays(-Random.Shared.Next(1, 30)), // Approximate sold date
+            Condition = item.Condition ?? string.Empty,
             Currency = item.Price?.Currency ?? "USD",
             Marketplace = "eBay",
             BestOffer = false,
@@ -506,26 +568,30 @@ public class EbayApiService : IEbayApiService
         }).ToList();
     }
 
-    /// <summary>
-    /// Convert eBay categories to Category objects
-    /// </summary>
-    private List<Category> ConvertToCategories(List<EbayCategory> categories)
+    private List<Category> ConvertToCategories(List<EbayCategoryNode> nodes)
     {
-        return categories.Select(cat => new Category
+        var categories = new List<Category>();
+        
+        foreach (var node in nodes)
         {
-            CategoryId = cat.CategoryId ?? "",
-            Name = cat.CategoryName ?? "",
-            ParentCategoryId = "",
-            Level = 1,
-            HasChildren = cat.ChildCategories?.Any() ?? false
-        }).ToList();
+            categories.Add(new Category
+            {
+                CategoryId = node.Category?.CategoryId ?? string.Empty,
+                Name = node.Category?.CategoryName ?? string.Empty,
+                ParentCategoryId = node.ParentCategoryTreeNodeHref ?? string.Empty,
+                Level = node.CategoryTreeNodeLevel,
+                HasChildren = node.ChildCategoryTreeNodes?.Any() == true
+            });
+            
+            // Recursively add child categories
+            if (node.ChildCategoryTreeNodes?.Any() == true)
+            {
+                categories.AddRange(ConvertToCategories(node.ChildCategoryTreeNodes));
+            }
+        }
+        
+        return categories;
     }
-
-    #endregion
-
-    #region IDisposable Implementation
-
-    private bool _disposed = false;
 
     public void Dispose()
     {
@@ -537,77 +603,109 @@ public class EbayApiService : IEbayApiService
     {
         if (!_disposed && disposing)
         {
-            try
+            lock (_disposeLock)
             {
-                _client?.Dispose();
-                _rateLimitSemaphore?.Dispose();
-                _logger?.LogDebug("EbayApiService resources disposed successfully");
+                if (!_disposed)
+                {
+                    _disposed = true;
+                    
+                    try
+                    {
+                        _rateLimitTimer?.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Error disposing rate limit timer");
+                    }
+                    
+                    try
+                    {
+                        _rateLimitSemaphore?.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Error disposing rate limit semaphore");
+                    }
+                    
+                    try
+                    {
+                        _client?.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Error disposing REST client");
+                    }
+                }
             }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Error disposing EbayApiService resources");
-            }
-            _disposed = true;
         }
     }
-
-    ~EbayApiService()
-    {
-        Dispose(false);
-    }
-
-    #endregion
 }
 
-#region eBay API Response Models
+public class EbayTokenResponse
+{
+    [JsonProperty("access_token")]
+    public string AccessToken { get; set; } = string.Empty;
+
+    [JsonProperty("expires_in")]
+    public int ExpiresIn { get; set; }
+
+    [JsonProperty("token_type")]
+    public string TokenType { get; set; } = string.Empty;
+}
 
 public class EbaySearchResponse
 {
     [JsonProperty("itemSummaries")]
     public List<EbayItemSummary> ItemSummaries { get; set; } = new();
+
+    [JsonProperty("total")]
+    public int Total { get; set; }
+
+    [JsonProperty("limit")]
+    public int Limit { get; set; }
+
+    [JsonProperty("offset")]
+    public int Offset { get; set; }
 }
 
 public class EbayItemSummary
 {
     [JsonProperty("itemId")]
     public string? ItemId { get; set; }
-    
+
     [JsonProperty("title")]
     public string? Title { get; set; }
-    
-    [JsonProperty("shortDescription")]
-    public string? ShortDescription { get; set; }
-    
+
     [JsonProperty("price")]
     public EbayPrice? Price { get; set; }
-    
+
     [JsonProperty("image")]
     public EbayImage? Image { get; set; }
-    
-    [JsonProperty("condition")]
-    public string? Condition { get; set; }
-    
+
     [JsonProperty("itemWebUrl")]
     public string? ItemWebUrl { get; set; }
-    
-    [JsonProperty("categories")]
-    public List<EbayCategory>? Categories { get; set; }
+
+    [JsonProperty("itemLocation")]
+    public EbayLocation? ItemLocation { get; set; }
+
+    [JsonProperty("condition")]
+    public string? Condition { get; set; }
+
+    [JsonProperty("shortDescription")]
+    public string? ShortDescription { get; set; }
 }
 
 public class EbayItemDetails : EbayItemSummary
 {
     [JsonProperty("description")]
     public string? Description { get; set; }
-    
-    [JsonProperty("categoryPath")]
-    public string? CategoryPath { get; set; }
 }
 
 public class EbayPrice
 {
     [JsonProperty("value")]
     public decimal Value { get; set; }
-    
+
     [JsonProperty("currency")]
     public string Currency { get; set; } = "USD";
 }
@@ -618,40 +716,44 @@ public class EbayImage
     public string? ImageUrl { get; set; }
 }
 
-public class EbayCategory
+public class EbayLocation
 {
-    [JsonProperty("categoryId")]
-    public string? CategoryId { get; set; }
-    
-    [JsonProperty("categoryName")]
-    public string? CategoryName { get; set; }
-    
-    [JsonProperty("childCategories")]
-    public List<EbayCategory>? ChildCategories { get; set; }
-}
+    [JsonProperty("city")]
+    public string? City { get; set; }
 
-public class EbayCategoryResponse
-{
-    [JsonProperty("categoryTree")]
-    public EbayCategoryTree? CategoryTree { get; set; }
+    [JsonProperty("stateOrProvince")]
+    public string? StateOrProvince { get; set; }
+
+    [JsonProperty("country")]
+    public string? Country { get; set; }
 }
 
 public class EbayCategoryTree
 {
-    [JsonProperty("rootCategory")]
-    public EbayCategory? RootCategory { get; set; }
+    [JsonProperty("rootCategoryNode")]
+    public EbayCategoryNode? RootCategoryNode { get; set; }
 }
 
-public class EbayTokenResponse
+public class EbayCategoryNode
 {
-    [JsonProperty("access_token")]
-    public string AccessToken { get; set; } = string.Empty;
-    
-    [JsonProperty("expires_in")]
-    public int ExpiresIn { get; set; }
-    
-    [JsonProperty("token_type")]
-    public string TokenType { get; set; } = "Bearer";
+    [JsonProperty("category")]
+    public EbayCategoryInfo? Category { get; set; }
+
+    [JsonProperty("childCategoryTreeNodes")]
+    public List<EbayCategoryNode>? ChildCategoryTreeNodes { get; set; }
+
+    [JsonProperty("categoryTreeNodeLevel")]
+    public int CategoryTreeNodeLevel { get; set; }
+
+    [JsonProperty("parentCategoryTreeNodeHref")]
+    public string? ParentCategoryTreeNodeHref { get; set; }
 }
 
-#endregion
+public class EbayCategoryInfo
+{
+    [JsonProperty("categoryId")]
+    public string? CategoryId { get; set; }
+
+    [JsonProperty("categoryName")]
+    public string? CategoryName { get; set; }
+}

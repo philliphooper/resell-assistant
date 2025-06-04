@@ -22,7 +22,7 @@ const DealDiscoverySettingsModal: React.FC<DealDiscoverySettingsProps> = ({
       listingsPerProduct: 5,
       searchTerms: '',
       minProfitMargin: 15,
-      preferredMarketplaces: ['eBay', 'Facebook Marketplace'],
+      preferredMarketplaces: ['eBay'], // Facebook Marketplace temporarily disabled
       enableNotifications: true,
     }
   );
@@ -179,9 +179,8 @@ const DealDiscoverySettingsModal: React.FC<DealDiscoverySettingsProps> = ({
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Preferred Marketplaces
-                    </label>
-                    <div className="space-y-2">
-                      {['eBay', 'Facebook Marketplace'].map((marketplace) => (
+                    </label>                    <div className="space-y-2">
+                      {['eBay'].map((marketplace) => ( // Facebook Marketplace temporarily disabled
                         <label key={marketplace} className="flex items-center">
                           <input
                             type="checkbox"

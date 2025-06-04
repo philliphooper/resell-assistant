@@ -155,12 +155,11 @@ namespace Resell_Assistant.Services
         }
 
         private decimal GetMarketplaceMultiplier(string marketplace)
-        {
-            return marketplace.ToLower() switch
+        {            return marketplace.ToLower() switch
             {
                 "ebay" => 1.15m,
                 "amazon" => 1.2m,
-                "facebook marketplace" => 1.05m,
+                // "facebook marketplace" => 1.05m, // Temporarily disabled
                 "craigslist" => 1.0m,
                 _ => 1.1m
             };

@@ -28,23 +28,20 @@ namespace Resell_Assistant.Services
         private readonly IPriceAnalysisService _priceAnalysisService;
         private readonly IEbayApiService _ebayApiService;
         private readonly IFacebookMarketplaceService _facebookMarketplaceService;
-        private readonly ILogger<DealDiscoveryService> _logger;
-
-        public DealDiscoveryService(
+        private readonly ILogger<DealDiscoveryService> _logger;        public DealDiscoveryService(
             ApplicationDbContext context,
             IMarketplaceService marketplaceService,
             IPriceAnalysisService priceAnalysisService,
             IEbayApiService ebayApiService,
-            IFacebookMarketplaceService facebookMarketplaceService,
             ILogger<DealDiscoveryService> logger)
         {
             _context = context;
             _marketplaceService = marketplaceService;
             _priceAnalysisService = priceAnalysisService;
             _ebayApiService = ebayApiService;
-            _facebookMarketplaceService = facebookMarketplaceService;
+            _facebookMarketplaceService = null!; // Temporarily disabled
             _logger = logger;
-        }        public async Task<List<Deal>> DiscoverCrossMarketplaceDealsAsync(int maxResults = 20)
+        }public async Task<List<Deal>> DiscoverCrossMarketplaceDealsAsync(int maxResults = 20)
         {
             _logger.LogInformation("Starting cross-marketplace deal discovery");
 
@@ -86,11 +83,9 @@ namespace Resell_Assistant.Services
         {
             _logger.LogInformation("Finding price discrepancies for query: {Query}", query);
 
-            var deals = new List<Deal>();
-
-            // Search across all marketplaces with limited results for speed
+            var deals = new List<Deal>();            // Search eBay only (Facebook Marketplace temporarily disabled)
             var ebayProducts = await SearchMarketplaceSafely("eBay", query, maxSearchResults);
-            var facebookProducts = await SearchMarketplaceSafely("Facebook Marketplace", query, maxSearchResults);
+            var facebookProducts = new List<Product>(); // Facebook Marketplace temporarily disabled
 
             _logger.LogInformation("Found {EbayCount} eBay products and {FacebookCount} Facebook products for query: {Query}", 
                 ebayProducts.Count, facebookProducts.Count, query);
@@ -183,10 +178,9 @@ namespace Resell_Assistant.Services
             foreach (var term in trendingTerms)
             {
                 try
-                {
-                    // Search recent listings from marketplaces (not database)
+                {                    // Search eBay only (Facebook Marketplace temporarily disabled)
                     var ebayProducts = await SearchMarketplaceSafely("eBay", term, 20);
-                    var facebookProducts = await SearchMarketplaceSafely("Facebook Marketplace", term, 20);
+                    var facebookProducts = new List<Product>(); // Facebook Marketplace temporarily disabled
 
                     var allProducts = ebayProducts.Concat(facebookProducts).ToList();
 
@@ -346,12 +340,10 @@ namespace Resell_Assistant.Services
 
             foreach (var query in searchQueries.Take(10)) // Limit to 10 search terms
             {
-                if (products.Count >= count) break;
-
-                try
+                if (products.Count >= count) break;                try
                 {
                     var queryProducts = await SearchMarketplaceSafely("eBay", query, Math.Min(20, count));
-                    var facebookProducts = await SearchMarketplaceSafely("Facebook Marketplace", query, Math.Min(20, count));
+                    var facebookProducts = new List<Product>(); // Facebook Marketplace temporarily disabled
                     
                     var allProducts = queryProducts.Concat(facebookProducts)
                         .Where(p => !products.Any(existing => existing.Id == p.Id))
@@ -438,10 +430,8 @@ namespace Resell_Assistant.Services
             var potentialProfit = estimatedSellPrice - buyCost;
             var profitMargin = buyCost > 0 ? (potentialProfit / buyCost) * 100 : 0;            // Calculate deal score based on profit margin, number of listings, and marketplace diversity
             var marketplaceDiversity = listings.Select(l => l.Marketplace).Distinct().Count();
-            var dealScore = CalculateDealScore((double)profitMargin, listings.Count, marketplaceDiversity);
-
-            // Create or get the product for the cheapest listing
-            var product = await GetOrCreateProductAsync(cheapestListing);
+            var dealScore = CalculateDealScore((double)profitMargin, listings.Count, marketplaceDiversity);            // Create in-memory product for the cheapest listing (no database persistence)
+            var product = CreateProductFromListing(cheapestListing);
 
             var deal = new Deal
             {
@@ -459,11 +449,12 @@ namespace Resell_Assistant.Services
                            $"Potential profit: ${potentialProfit:F2} ({profitMargin:F1}% margin). " +
                            $"Analysis based on {listings.Count} comparable listings.",
                 CreatedAt = DateTime.UtcNow,
-                ComparisonListings = listings
+                ComparisonListings = listings,
+                Id = Guid.NewGuid().ToString() // Generate unique ID for in-memory deal
             };
 
-            // Save the deal and its comparison listings
-            await SaveDealWithComparisonListingsAsync(deal);
+            _logger.LogInformation("Created in-memory deal with score {DealScore} and potential profit ${PotentialProfit:F2}", 
+                deal.DealScore, deal.PotentialProfit);
 
             return deal;
         }        public async Task<bool> ValidateExactResultCountAsync(int requestedCount)
@@ -472,11 +463,10 @@ namespace Resell_Assistant.Services
             // Since we're using real-time APIs, we can potentially fulfill most reasonable requests
             
             try
-            {
-                // Test with a sample search to see if marketplaces are responsive
+            {                // Test with a sample search to see if marketplaces are responsive
                 var testQuery = "iPhone"; // Use a common search term
                 var testResults = await SearchMarketplaceSafely("eBay", testQuery, 5);
-                var facebookTestResults = await SearchMarketplaceSafely("Facebook Marketplace", testQuery, 5);
+                var facebookTestResults = new List<Product>(); // Facebook Marketplace temporarily disabled
                 
                 var totalTestResults = testResults.Count + facebookTestResults.Count;
                 
@@ -574,10 +564,8 @@ namespace Resell_Assistant.Services
             var keywords = ExtractKeywords(product.Title);
             var searchQuery = string.Join(" ", keywords.Take(3));
 
-            var similarProducts = new List<Product>();
-
-            // Search other marketplaces for similar products
-            var otherMarketplaces = new[] { "eBay", "Facebook Marketplace" }
+            var similarProducts = new List<Product>();            // Search other marketplaces for similar products
+            var otherMarketplaces = new[] { "eBay" } // Facebook Marketplace temporarily disabled
                 .Where(m => !m.Equals(product.Marketplace, StringComparison.OrdinalIgnoreCase));
 
             foreach (var marketplace in otherMarketplaces)
@@ -621,12 +609,11 @@ namespace Resell_Assistant.Services
             var trendingTerms = GetTrendingSearchTerms().Take(3).ToList();
             
             foreach (var term in trendingTerms)
-            {
-                try
+            {                try
                 {
-                    // Search for recent listings from marketplace APIs
+                    // Search for recent listings from marketplace APIs (eBay only for now)
                     var ebayProducts = await SearchMarketplaceSafely("eBay", term, 10);
-                    var facebookProducts = await SearchMarketplaceSafely("Facebook Marketplace", term, 10);
+                    var facebookProducts = new List<Product>(); // Facebook Marketplace temporarily disabled
                     
                     var recentProducts = ebayProducts.Concat(facebookProducts)
                         .OrderByDescending(p => p.CreatedAt)
@@ -797,10 +784,9 @@ namespace Resell_Assistant.Services
             var title = product.Title.ToLower();
             var popularKeywords = new[] { "iphone", "macbook", "ipad", "airpods", "nintendo", "playstation", "xbox", "jordan", "nike" };
             score += popularKeywords.Count(keyword => title.Contains(keyword)) * 2;
-            
-            // Marketplace diversity bonus
+              // Marketplace diversity bonus
             if (product.Marketplace == "eBay") score += 1;
-            if (product.Marketplace == "Facebook Marketplace") score += 1;
+            // if (product.Marketplace == "Facebook Marketplace") score += 1; // Temporarily disabled
             
             return score;
         }
