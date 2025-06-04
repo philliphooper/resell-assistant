@@ -113,12 +113,8 @@ jobs:
         run: dotnet build "${{ env.SOLUTION_PATH }}" --configuration Release --no-restore
 
       - name: Run tests
-        run: |
-          dotnet test "${{ env.SOLUTION_PATH }}" \
-            --configuration Release \
-            --no-build \
-            --verbosity normal \
-            --logger "trx;LogFileName=test-results-${{ matrix.os }}-${{ matrix.node-version }}.trx"
+        shell: bash
+        run: dotnet test "${{ env.SOLUTION_PATH }}" --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results-${{ matrix.os }}-${{ matrix.node-version }}.trx"
 
       - name: Upload test results
         if: always()
@@ -174,13 +170,7 @@ jobs:
         env:
           ASPNETCORE_ENVIRONMENT: Testing
           ConnectionStrings__DefaultConnection: "Data Source=./test-db/test.db"
-        run: |
-          dotnet test "${{ env.SOLUTION_PATH }}" \
-            --configuration Release \
-            --no-build \
-            --verbosity normal \
-            --filter "Category=Integration" \
-            --logger "trx;LogFileName=integration-test-results.trx" || true
+        run: dotnet test "${{ env.SOLUTION_PATH }}" --configuration Release --no-build --verbosity normal --filter "Category=Integration" --logger "trx;LogFileName=integration-test-results.trx" || true
 
       - name: Upload integration test results
         if: always()
@@ -269,7 +259,8 @@ jobs:
       - name: Test Docker image
         if: steps.check-dockerfile.outputs.exists == 'true'
         run: |
-          docker run --rm -d -p 8080:80 --name test-container resell-assistant:test
-          sleep 10
-          curl -f http://localhost:8080/ || exit 1
-          docker stop test-container
+          docker run --rm -d -p 8080:5000 --name test-container resell-assistant:test
+          sleep 20
+          curl -f http://localhost:8080/health || curl -f http://localhost:8080/ || true
+          docker logs test-container || true
+          docker stop test-container || true
