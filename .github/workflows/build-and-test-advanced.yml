@@ -98,11 +98,13 @@ jobs:
         run: dotnet restore "${{ env.SOLUTION_PATH }}"
 
       - name: Install Node.js dependencies
+        shell: bash
         run: |
           cd "${{ env.CLIENT_APP_PATH }}"
           npm ci
 
       - name: Build React frontend
+        shell: bash
         run: |
           cd "${{ env.CLIENT_APP_PATH }}"
           npm run build
@@ -125,15 +127,10 @@ jobs:
           name: test-results-${{ matrix.os }}-node${{ matrix.node-version }}
           path: |
             **/test-results-*.trx
+
   # Integration tests with database
   integration-tests:
     runs-on: ubuntu-latest
-    
-    # Remove the problematic busybox service - SQLite doesn't need a separate container
-    # services:
-    #   sqlite:
-    #     image: busybox
-    #     options: --health-cmd "echo 'healthy'" --health-interval 10s --health-timeout 5s --health-retries 3
     
     steps:
       - name: Checkout repository
