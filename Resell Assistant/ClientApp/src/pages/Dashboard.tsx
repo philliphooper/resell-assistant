@@ -3,13 +3,14 @@ import { useTopDeals, useDashboardStats, useApiHealth } from '../hooks/useApi';
 import DealCard from '../components/DealCard';
 import StatsCard from '../components/StatsCard';
 import LoadingSpinner from '../components/LoadingSpinner';
+import DealDiscoverySettingsModal from '../components/DealDiscoverySettingsModal';
 import { apiService } from '../services/api';
 import { Deal } from '../types/api';
 
 const Dashboard: React.FC = () => {
   const { data: deals, loading: dealsLoading, error: dealsError, refresh: refreshDeals } = useTopDeals();
   const { data: stats, loading: statsLoading, error: statsError, refresh: refreshStats } = useDashboardStats();
-  const { isHealthy, checking: healthChecking, checkHealth } = useApiHealth();
+  const { checkHealth } = useApiHealth();
 
   // Enhanced state for deal discovery
   const [discoveringDeals, setDiscoveringDeals] = useState(false);
@@ -17,10 +18,18 @@ const Dashboard: React.FC = () => {
   const [realTimeDeals, setRealTimeDeals] = useState<Deal[]>([]);
   const [activeTab, setActiveTab] = useState<'stored' | 'discovered' | 'realtime'>('stored');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<Deal[]>([]);
+  const [isSearching, setIsSearching] = useState(false);  const [searchResults, setSearchResults] = useState<Deal[]>([]);
   const [discoveryError, setDiscoveryError] = useState<string | null>(null);
   const [discoverySuccess, setDiscoverySuccess] = useState<string | null>(null);
+  
+  // Deal Discovery Settings Modal
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [dealDiscoverySettings, setDealDiscoverySettings] = useState({
+    minProfitMargin: 15,
+    maxSearchResults: 20,
+    preferredMarketplaces: ['eBay', 'Facebook Marketplace'],
+    enableNotifications: true,
+  });
 
   // Auto-refresh real-time deals every 5 minutes
   useEffect(() => {
@@ -129,7 +138,13 @@ const Dashboard: React.FC = () => {
       case 'stored':
       default:
         return dealsLoading;
-    }
+    }  };
+
+  // Handle settings save
+  const handleSettingsSave = (newSettings: typeof dealDiscoverySettings) => {
+    setDealDiscoverySettings(newSettings);
+    // You could also persist these settings to localStorage or API here
+    console.log('Deal Discovery settings updated:', newSettings);
   };
 
   // Enhanced deal summary for discovered deals
@@ -173,48 +188,6 @@ const Dashboard: React.FC = () => {
       </div>
     );
   };
-
-  // Show API connection status
-  const renderApiStatus = () => {
-    // Show loading state during health check OR if health status is still unknown
-    if (healthChecking || isHealthy === null) {
-      return (
-        <div className="mb-6 p-4 rounded-lg bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
-          <div className="flex items-center">
-            <div className="animate-spin w-3 h-3 mr-3 border border-blue-600 border-t-transparent rounded-full"></div>
-            <span className="font-medium">Checking API Connection...</span>
-          </div>
-        </div>
-      );
-    }
-    
-    return (
-      <div className={`mb-6 p-4 rounded-lg ${
-        isHealthy 
-          ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' 
-          : 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'
-      }`}>
-        <div className="flex items-center">
-          <div className={`w-3 h-3 rounded-full mr-3 ${
-            isHealthy ? 'bg-green-500' : 'bg-red-500'
-          }`}></div>
-          <span className="font-medium">
-            {isHealthy ? 'API Connected' : 'API Connection Failed'}
-          </span>
-          {!isHealthy && (
-            <button
-              onClick={checkHealth}
-              disabled={healthChecking}
-              className="ml-4 text-sm underline hover:no-underline disabled:opacity-50"
-            >
-              {healthChecking ? 'Retrying...' : 'Retry'}
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   // Enhanced status messages
   const renderStatusMessages = () => {
     return (
@@ -278,10 +251,7 @@ const Dashboard: React.FC = () => {
           </svg>
           Refresh
         </button>
-      </div>
-
-      {/* API Status & Status Messages */}
-      {renderApiStatus()}
+      </div>      {/* Status Messages */}
       {renderStatusMessages()}
 
       {/* Stats Cards */}
@@ -416,9 +386,7 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         </div>
-      )}
-
-      {/* Enhanced Deal Discovery Section */}
+      )}      {/* Enhanced Deal Discovery Section */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
         <div className="flex justify-between items-center mb-6">
           <div>
@@ -427,31 +395,45 @@ const Dashboard: React.FC = () => {
               Find profitable resale opportunities across marketplaces
             </p>
           </div>
-          <button
-            onClick={discoverNewDeals}
-            disabled={discoveringDeals}
-            className={`px-6 py-3 rounded-lg font-medium transition-all duration-200 flex items-center ${
-              discoveringDeals
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-green-600 hover:bg-green-700 hover:scale-105 shadow-lg'
-            } text-white`}
-          >
-            {discoveringDeals ? (
-              <>
-                <svg className="w-5 h-5 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Discovering Deals...
-              </>
-            ) : (
-              <>
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                Discover Deals
-              </>
-            )}
-          </button>
+          <div className="flex items-center space-x-3">
+            {/* Settings Filter Icon */}
+            <button
+              onClick={() => setIsSettingsModalOpen(true)}
+              className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors duration-200"
+              title="Deal Discovery Settings"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+              </svg>
+            </button>
+            
+            {/* Discover Deals Button */}
+            <button
+              onClick={discoverNewDeals}
+              disabled={discoveringDeals}
+              className={`px-6 py-3 rounded-lg font-medium transition-all duration-200 flex items-center ${
+                discoveringDeals
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : 'bg-green-600 hover:bg-green-700 hover:scale-105 shadow-lg'
+              } text-white`}
+            >
+              {discoveringDeals ? (
+                <>
+                  <svg className="w-5 h-5 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Discovering Deals...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  Discover Deals
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Search for specific deals */}
@@ -661,9 +643,16 @@ const Dashboard: React.FC = () => {
                activeTab === 'realtime' ? 'Real-time deals will appear here automatically' :
                'Check back later for new opportunities or try refreshing the data.'}
             </p>
-          </div>
-        )}
+          </div>        )}
       </div>
+      
+      {/* Deal Discovery Settings Modal */}
+      <DealDiscoverySettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        onSave={handleSettingsSave}
+        currentSettings={dealDiscoverySettings}
+      />
     </div>
   );
 };

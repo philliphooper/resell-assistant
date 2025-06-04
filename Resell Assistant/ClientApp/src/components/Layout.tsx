@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import ThemeToggle from './ThemeToggle';
+import ApiStatusLED from './ApiStatusLED';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -50,10 +51,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   );
                 })}
               </div>
-            </div>
-            
-            {/* Theme Toggle */}
-            <div className="flex items-center">
+            </div>            
+            {/* Right side - API Status LED and Theme Toggle */}
+            <div className="flex items-center space-x-4">
+              <ApiStatusLED />
               <ThemeToggle />
             </div>
           </div>

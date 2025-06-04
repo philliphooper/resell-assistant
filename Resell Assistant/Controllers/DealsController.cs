@@ -222,13 +222,12 @@ namespace Resell_Assistant.Controllers
 
                 var stats = new
                 {
-                    TotalDeals = allDeals.Count,
-                    AverageScore = allDeals.Any() ? (int)allDeals.Average(d => d.DealScore) : 0,
+                    TotalDeals = allDeals.Count,                    AverageScore = allDeals.Any() ? (int)allDeals.Average(d => d.DealScore) : 0,
                     TotalPotentialProfit = allDeals.Sum(d => d.PotentialProfit),
                     HighValueDeals = allDeals.Count(d => d.DealScore >= 80),
                     MarketplaceBreakdown = allDeals
-                        .Where(d => d.Product != null)
-                        .GroupBy(d => d.Product.Marketplace)
+                        .Where(d => d.Product?.Marketplace != null)
+                        .GroupBy(d => d.Product!.Marketplace)
                         .Select(g => new { Marketplace = g.Key, Count = g.Count() })
                         .ToList(),
                     RecentDeals = allDeals

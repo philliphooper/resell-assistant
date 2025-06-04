@@ -72,7 +72,12 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseStaticFiles();
+
+// Only serve static files in production (React dev server handles this in development)
+if (!app.Environment.IsDevelopment())
+{
+    app.UseStaticFiles();
+}
 
 app.UseRouting();
 

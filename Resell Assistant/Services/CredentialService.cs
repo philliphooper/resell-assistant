@@ -168,12 +168,10 @@ namespace Resell_Assistant.Services
             {
                 _logger.LogError(ex, "Failed to delete credentials for service: {Service}", service);
                 return false;
-            }        }
-
-        /// <summary>
+            }        }        /// <summary>
         /// Test encryption and decryption with a provided value
         /// </summary>
-        public async Task<(string encryptedValue, string decryptedValue)> TestEncryptionAsync(string testValue)
+        public Task<(string encryptedValue, string decryptedValue)> TestEncryptionAsync(string testValue)
         {
             try
             {
@@ -183,7 +181,7 @@ namespace Resell_Assistant.Services
                 _logger.LogInformation("Encryption test - Original: {OriginalLength} chars, Encrypted: {EncryptedLength} chars, Decrypted: {DecryptedLength} chars", 
                     testValue.Length, encrypted.Length, decrypted.Length);
                 
-                return (encrypted, decrypted);
+                return Task.FromResult((encrypted, decrypted));
             }
             catch (Exception ex)
             {
