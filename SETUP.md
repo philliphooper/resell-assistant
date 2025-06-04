@@ -1,13 +1,31 @@
-# Setup and Development Guide
+# Resell Assistant - Complete Setup Guide
 
-## Prerequisites
+## 🚀 Quick Start
+
+### One Command Startup
+From the root directory:
+```bash
+cd "Resell Assistant"
+dotnet run
+```
+
+This single command:
+- ✅ Starts .NET backend (ports 5001 HTTPS/5000 HTTP)
+- ✅ Automatically starts React frontend (port 3000)
+- ✅ Configures all proxy routing
+- ✅ Opens your browser to https://localhost:5001
+
+**Access your app at: https://localhost:5001**
+
+## 📋 Prerequisites
+
+### Required Software
 - [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
 - [Node.js 18+](https://nodejs.org/)
-- [Visual Studio Code](https://code.visualstudio.com/)
+- [Visual Studio Code](https://code.visualstudio.com/) (recommended)
 - Git
 
-## VS Code Extensions (Recommended)
-Install these extensions for the best development experience:
+### VS Code Extensions (Recommended)
 - C# Dev Kit
 - C# 
 - TypeScript and JavaScript Language Features
@@ -17,112 +35,131 @@ Install these extensions for the best development experience:
 - Auto Rename Tag
 - GitLens
 
-## Step-by-Step Setup
+## 🛠️ Detailed Setup Instructions
 
-### 1. Clone the Repository
+### 1. Clone and Setup
 ```bash
 # Clone the repository
 git clone https://github.com/philliphooper/resell-assistant.git
-
-# Navigate to the project directory
 cd resell-assistant
-```
 
-### 2. Open in VS Code
-```bash
-# Open the project in VS Code
+# Open in VS Code
 code .
 ```
 
-### 3. Backend Setup (.NET)
+### 2. Backend Setup
 ```bash
-# Navigate to the backend project
+# Navigate to backend and restore packages
 cd "Resell Assistant"
-
-# Restore .NET packages
 dotnet restore
-
-# Build the project (this will also build the React app)
 dotnet build
 ```
 
-### 4. Frontend Setup (React)
+### 3. Frontend Setup
 ```bash
-# Navigate to the React app directory
+# Install React dependencies
 cd "ClientApp"
-
-# Install Node.js dependencies
 npm install
-
-# Return to the main project directory
 cd ..
 ```
 
-### 5. Configuration
-1. Copy the example configuration:
+### 4. Configuration
+Copy and configure settings:
 ```bash
-cp appsettings.json appsettings.Development.json
+cp appsettings.template.json appsettings.json
 ```
 
-2. Edit `appsettings.Development.json` and add your API keys:
+Edit `appsettings.json` for your environment:
 ```json
 {
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Microsoft.AspNetCore": "Warning"
-    }
-  },
-  "AllowedHosts": "*",
   "ConnectionStrings": {
     "DefaultConnection": "Data Source=resell_assistant.db"
   },
   "ApiKeys": {
     "EbayClientId": "YOUR_EBAY_CLIENT_ID",
     "EbayClientSecret": "YOUR_EBAY_CLIENT_SECRET"
+  },
+  "EbayApiSettings": {
+    "Environment": "production",
+    "BaseUrl": "https://api.ebay.com",
+    "OAuthUrl": "https://auth.ebay.com",
+    "RateLimitPerSecond": 5
   }
 }
 ```
 
-## Running the Application
+## 🎯 eBay API Setup (Required for Live Data)
 
-### Option 1: VS Code Debugging (Recommended)
+### Step 1: Create eBay Developer Account
+1. Visit: **https://developer.ebay.com/**
+2. Click "Get Started" or "Join"
+3. Sign in with existing eBay account or create new
+4. Accept Developer Program Agreement
 
-1. **Open VS Code** in the project root directory
-2. **Press F5** or click "Run > Start Debugging"
-3. Select ".NET Core" if prompted
-4. The application will start with the debugger attached
+### Step 2: Create Application
+1. Go to "My Account" → "Application Keysets"
+2. Click "Create App Key"
+3. Application Details:
+   - **Name**: "Resell Assistant"
+   - **Type**: "General Application"
+   - **Description**: "Marketplace price analysis tool"
 
-The app will be available at:
-- Backend API: `https://localhost:5001`
-- Frontend: `http://localhost:3000` (auto-opens)
-- Swagger API Docs: `https://localhost:5001/swagger`
+### Step 3: Configure OAuth Settings
+- **Redirect URI**: `https://localhost:5001/auth/callback`
+- **Scopes**: Select "Browse API" (for product search)
+
+### Step 4: Get Your Credentials
+You'll receive:
+```
+Production Client ID: YourApp-Production-a1b2c3d4
+Production Client Secret: PRD-a1b2c3d4-e5f6-7890-abcd-efghijklmnop
+```
+
+### Step 5: Update Configuration
+Add your credentials to `appsettings.json`:
+```json
+{
+  "ApiKeys": {
+    "EbayClientId": "YourApp-Production-a1b2c3d4",
+    "EbayClientSecret": "PRD-a1b2c3d4-e5f6-7890-abcd-efghijklmnop"
+  }
+}
+```
+
+## 🏃‍♂️ Running the Application
+
+### Option 1: VS Code (Recommended)
+1. Press `F5` or click "Run > Start Debugging"
+2. Select ".NET Core" if prompted
+3. Application opens automatically at https://localhost:5001
 
 ### Option 2: Command Line
-
-#### Start Backend Only:
 ```bash
 cd "Resell Assistant"
 dotnet run
 ```
 
-#### Start Frontend Only (separate terminal):
+### Option 3: Batch File (Windows)
 ```bash
-cd "Resell Assistant/ClientApp"
-npm start
+./start-dev.bat
 ```
 
-#### Start Both (Production Mode):
+### Option 4: Shell Script (Linux/Mac)
 ```bash
-cd "Resell Assistant"
-dotnet run --launch-profile "Resell Assistant"
+chmod +x start-dev.sh
+./start-dev.sh
 ```
 
-## Debugging Tips
+## 🌐 Access Points
+- **Main Application**: https://localhost:5001
+- **API Documentation**: https://localhost:5001/swagger
+- **React Dev Server**: http://localhost:3000 (direct access)
+- **HTTP Redirect**: http://localhost:5000 → https://localhost:5001
 
-### VS Code Launch Configuration
-The project includes a `.vscode/launch.json` file for debugging. If it doesn't exist, create it:
+## 🔧 Development Tips
 
+### VS Code Debugging
+The project includes debugging configuration. If missing, create `.vscode/launch.json`:
 ```json
 {
   "version": "0.2.0",
@@ -142,68 +179,89 @@ The project includes a `.vscode/launch.json` file for debugging. If it doesn't e
       },
       "env": {
         "ASPNETCORE_ENVIRONMENT": "Development"
-      },
-      "sourceFileMap": {
-        "/Views": "${workspaceFolder}/Views"
       }
     }
   ]
 }
 ```
 
-### Common Issues and Solutions
+### Hot Reload
+- **Backend**: Hot reload enabled for C# code changes
+- **Frontend**: Auto-refresh for React/TypeScript changes
+- **Database**: Automatically created on first run
 
-1. **Port Already in Use**:
-   - Change ports in `Properties/launchSettings.json`
-   - Or kill the process using the port
+## 🐛 Troubleshooting
 
-2. **Database Issues**:
-   - Delete `resell_assistant.db` file and restart
-   - The database will be recreated automatically
+### Port Issues
+If ports are busy, kill processes:
+```bash
+# Windows
+netstat -ano | findstr :5001
+taskkill //F //PID <process_id>
 
-3. **Node Modules Issues**:
-   ```bash
-   cd "Resell Assistant/ClientApp"
-   rm -rf node_modules
-   npm install
-   ```
+# Linux/Mac
+lsof -ti:5001 | xargs kill -9
+```
 
-4. **SSL Certificate Issues**:
-   ```bash
-   dotnet dev-certs https --trust
-   ```
+### Database Issues
+Reset database:
+```bash
+cd "Resell Assistant"
+rm resell_assistant.db
+dotnet run  # Database recreated automatically
+```
 
-## Development Workflow
+### Node Modules Issues
+```bash
+cd "Resell Assistant/ClientApp"
+rm -rf node_modules package-lock.json
+npm install
+```
 
-1. **Set Breakpoints** in your C# code
-2. **Press F5** to start debugging
-3. **Make changes** to backend code - hot reload is enabled
-4. **Frontend changes** auto-refresh in the browser
-5. **Use Swagger** at `/swagger` to test API endpoints
+### SSL Certificate Issues
+```bash
+dotnet dev-certs https --trust
+```
 
-## Project Structure
+### eBay API Issues
+1. Verify credentials in application settings
+2. Check eBay Developer Portal for application status
+3. Ensure scopes include "Browse API"
+4. Test connection via `/api/dashboard/test-ebay-connection`
 
+## 📁 Project Structure
 ```
 resell-assistant/
 ├── Resell Assistant/           # .NET Backend
 │   ├── Controllers/           # API Controllers
 │   ├── Services/             # Business Logic
+│   │   └── External/         # External API Services
 │   ├── Models/               # Data Models
+│   │   └── Configuration/    # Configuration Models
 │   ├── Data/                 # Database Context
 │   ├── ClientApp/            # React Frontend
 │   └── Program.cs            # Application Entry Point
-├── README.md
-├── SETUP.md                  # This file
-└── Dockerfile               # Container Configuration
+├── Resell Assistant.Tests/    # Unit Tests
+├── README.md                  # Project Overview
+├── SETUP.md                   # This Setup Guide
+└── start-dev.bat/sh          # Quick Start Scripts
 ```
 
-## Next Development Steps
+## 🚀 Next Steps
 
-1. **Complete the React frontend components**
-2. **Add authentication/authorization**
-3. **Implement real marketplace API integrations**
-4. **Add comprehensive error handling**
-5. **Write unit tests**
-6. **Set up deployment pipeline**
+After successful setup:
+1. **Test eBay Integration**: Visit https://localhost:5001/swagger
+2. **Search Products**: Use `/api/products/search` endpoint
+3. **Configure Additional APIs**: Add Amazon, Facebook Marketplace
+4. **Customize Features**: Modify search filters and analysis
+5. **Deploy**: Configure for production deployment
 
-You're now ready to start developing! 🚀
+## 📞 Support
+
+For questions or issues:
+1. Check this setup guide thoroughly
+2. Review the troubleshooting section
+3. Check project documentation in README.md
+4. Open an issue on GitHub
+
+You're now ready to start developing with real marketplace data! 🎉
