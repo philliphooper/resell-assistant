@@ -78,7 +78,9 @@ jobs:
             --no-build \
             --verbosity normal \
             --logger trx \
-            --results-directory ./TestResults      - name: Publish application
+            --results-directory ./TestResults
+
+      - name: Publish application
         run: |
           dotnet publish "${{ env.MAIN_PROJECT_PATH }}" \
             --configuration Release \
