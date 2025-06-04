@@ -92,13 +92,12 @@ const Settings: React.FC = () => {
     setError(null);
     setSuccess(null);
 
-    try {
-      const response = await fetch('/api/settings/credentials/ebay/test', {
+    try {      const response = await fetch('/api/settings/credentials/ebay/test', {
         method: 'POST',
       });
-
+      
       if (response.ok) {
-        const data = await response.json();
+        await response.json(); // Read response to prevent memory leaks
         setSuccess('eBay API connection test successful!');
       } else {
         const errorData = await response.json();

@@ -127,15 +127,13 @@ export function useApiHealth() {
       console.log('[useApiHealth] Health check finished, setting checking=false');
       setChecking(false);
     }
-  }, []);
-  
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);  // Check health on mount and interval
   useEffect(() => {
     checkHealth();
     // Check health every 10 minutes for better stability
     const interval = setInterval(checkHealth, 600000);
     return () => clearInterval(interval);
-  }, []); // Empty dependency array to run only once
+  }, [checkHealth]); // checkHealth is stable because it's wrapped in useCallback
 
   return { isHealthy, checking, checkHealth };
 }

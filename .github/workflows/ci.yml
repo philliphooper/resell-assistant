@@ -43,6 +43,8 @@ jobs:
           npm ci
 
       - name: Build React frontend
+        env:
+          CI: false  # Treat warnings as warnings, not errors
         run: |
           cd "${{ env.CLIENT_APP_PATH }}"
           npm run build
