@@ -1,14 +1,23 @@
-name: CI
+name: Build and Test
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  NODE_VERSION: '18'
+  SOLUTION_PATH: 'Resell Assistant.sln'
+  MAIN_PROJECT_PATH: 'Resell Assistant/Resell Assistant.csproj'
+  TEST_PROJECT_PATH: 'Resell Assistant.Tests/Resell Assistant.Tests.csproj'
+  CLIENT_APP_PATH: 'Resell Assistant/ClientApp'
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -16,24 +25,74 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Restore dependencies
-        run: dotnet restore "Resell Assistant.sln"
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: '${{ env.CLIENT_APP_PATH }}/package-lock.json'
 
-      - name: Build
-        run: dotnet build "Resell Assistant.sln" --configuration Release --no-restore
+      - name: Restore solution dependencies
+        run: dotnet restore "${{ env.SOLUTION_PATH }}"
 
-      - name: Run tests
-        run: dotnet test "Resell Assistant.Tests/Resell Assistant.Tests.csproj" --configuration Release --no-build --logger "trx;LogFileName=test_results.trx"
+      - name: Install Node.js dependencies
+        run: |
+          cd "${{ env.CLIENT_APP_PATH }}"
+          npm ci
+
+      - name: Build React frontend
+        run: |
+          cd "${{ env.CLIENT_APP_PATH }}"
+          npm run build
+
+      - name: Build solution
+        run: dotnet build "${{ env.SOLUTION_PATH }}" --configuration Release --no-restore
+
+      - name: Run .NET tests with coverage
+        run: |
+          dotnet test "${{ env.TEST_PROJECT_PATH }}" \
+            --configuration Release \
+            --no-build \
+            --verbosity normal \
+            --logger "trx;LogFileName=test-results.trx" \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./TestResults
+
+      - name: Check for React tests
+        id: check-react-tests
+        run: |
+          cd "${{ env.CLIENT_APP_PATH }}"
+          if find src -name "*.test.*" -o -name "__tests__" | grep -q .; then
+            echo "has-tests=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-tests=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run React tests
+        if: steps.check-react-tests.outputs.has-tests == 'true'
+        run: |
+          cd "${{ env.CLIENT_APP_PATH }}"
+          npm test -- --coverage --ci --watchAll=false
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: Resell Assistant.Tests/TestResults/test_results.trx
+          path: |
+            ./TestResults/**/*.trx
+            ./TestResults/**/coverage.cobertura.xml
+            ${{ env.CLIENT_APP_PATH }}/coverage/
 
-      - name: Publish (Release build)
+      - name: Publish application
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: dotnet publish "Resell Assistant/Resell Assistant.csproj" --configuration Release --output publish-test
+        run: dotnet publish "${{ env.MAIN_PROJECT_PATH }}" --configuration Release --output ./publish --no-restore
+
+      - name: Upload publish artifacts
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: published-app
+          path: ./publish/

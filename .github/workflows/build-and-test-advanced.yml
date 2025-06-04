@@ -1,0 +1,279 @@
+name: Advanced Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run nightly builds at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  NODE_VERSION: '18'
+  SOLUTION_PATH: 'Resell Assistant.sln'
+  MAIN_PROJECT_PATH: 'Resell Assistant/Resell Assistant.csproj'
+  TEST_PROJECT_PATH: 'Resell Assistant.Tests/Resell Assistant.Tests.csproj'
+  CLIENT_APP_PATH: 'Resell Assistant/ClientApp'
+
+jobs:
+  # Code quality and security analysis
+  code-analysis:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore "${{ env.SOLUTION_PATH }}"
+
+      - name: Run .NET security analysis
+        run: |
+          dotnet list "${{ env.SOLUTION_PATH }}" package --vulnerable --include-transitive || true
+          dotnet list "${{ env.SOLUTION_PATH }}" package --deprecated || true
+
+      - name: Setup Node.js for ESLint
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: '${{ env.CLIENT_APP_PATH }}/package-lock.json'
+
+      - name: Install Node.js dependencies
+        run: |
+          cd "${{ env.CLIENT_APP_PATH }}"
+          npm ci
+
+      - name: Run ESLint
+        run: |
+          cd "${{ env.CLIENT_APP_PATH }}"
+          npx eslint src --ext .js,.jsx,.ts,.tsx --format=json --output-file=eslint-results.json || true
+
+      - name: Upload code analysis results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-analysis-results
+          path: |
+            ${{ env.CLIENT_APP_PATH }}/eslint-results.json
+
+  # Multi-platform build and test
+  build-test-matrix:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        dotnet-version: ['9.0.x']
+        node-version: ['18', '20']
+        exclude:
+          # Reduce matrix for cost optimization
+          - os: macos-latest
+            node-version: '20'
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.dotnet-version }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: '${{ env.CLIENT_APP_PATH }}/package-lock.json'
+
+      - name: Restore solution dependencies
+        run: dotnet restore "${{ env.SOLUTION_PATH }}"
+
+      - name: Install Node.js dependencies
+        run: |
+          cd "${{ env.CLIENT_APP_PATH }}"
+          npm ci
+
+      - name: Build React frontend
+        run: |
+          cd "${{ env.CLIENT_APP_PATH }}"
+          npm run build
+
+      - name: Build solution
+        run: dotnet build "${{ env.SOLUTION_PATH }}" --configuration Release --no-restore
+
+      - name: Run tests
+        run: |
+          dotnet test "${{ env.TEST_PROJECT_PATH }}" \
+            --configuration Release \
+            --no-build \
+            --verbosity normal \
+            --logger "trx;LogFileName=test-results-${{ matrix.os }}-${{ matrix.node-version }}.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}-node${{ matrix.node-version }}
+          path: |
+            **/test-results-*.trx
+
+  # Integration tests with database
+  integration-tests:
+    runs-on: ubuntu-latest
+    
+    services:
+      sqlite:
+        # Use a simple container for any database setup if needed
+        image: busybox
+        options: --health-cmd "echo 'healthy'" --health-interval 10s --health-timeout 5s --health-retries 3
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: '${{ env.CLIENT_APP_PATH }}/package-lock.json'
+
+      - name: Restore solution dependencies
+        run: dotnet restore "${{ env.SOLUTION_PATH }}"
+
+      - name: Install Node.js dependencies
+        run: |
+          cd "${{ env.CLIENT_APP_PATH }}"
+          npm ci
+
+      - name: Build React frontend
+        run: |
+          cd "${{ env.CLIENT_APP_PATH }}"
+          npm run build
+
+      - name: Build solution
+        run: dotnet build "${{ env.SOLUTION_PATH }}" --configuration Release --no-restore
+
+      - name: Setup test database
+        run: |
+          # Initialize SQLite test database if needed
+          mkdir -p ./test-db
+          touch ./test-db/test.db
+
+      - name: Run integration tests
+        env:
+          ASPNETCORE_ENVIRONMENT: Testing
+          ConnectionStrings__DefaultConnection: "Data Source=./test-db/test.db"
+        run: |
+          dotnet test "${{ env.TEST_PROJECT_PATH }}" \
+            --configuration Release \
+            --no-build \
+            --verbosity normal \
+            --filter "Category=Integration" \
+            --logger "trx;LogFileName=integration-test-results.trx" || true
+
+      - name: Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: |
+            **/integration-test-results.trx
+
+  # Performance and load testing
+  performance-tests:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: '${{ env.CLIENT_APP_PATH }}/package-lock.json'
+
+      - name: Build application
+        run: |
+          dotnet restore "${{ env.SOLUTION_PATH }}"
+          cd "${{ env.CLIENT_APP_PATH }}"
+          npm ci
+          npm run build
+          cd ..
+          dotnet build "${{ env.SOLUTION_PATH }}" --configuration Release --no-restore
+
+      - name: Run application in background
+        run: |
+          dotnet run --project "${{ env.MAIN_PROJECT_PATH }}" --configuration Release &
+          sleep 30  # Wait for application to start
+
+      - name: Install Apache Bench
+        run: sudo apt-get update && sudo apt-get install -y apache2-utils
+
+      - name: Run performance tests
+        run: |
+          ab -n 100 -c 10 http://localhost:5000/ > performance-results.txt || true
+          cat performance-results.txt
+
+      - name: Upload performance results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results
+          path: performance-results.txt
+
+  # Docker build and test
+  docker-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check if Dockerfile exists
+        id: check-dockerfile
+        run: |
+          if [ -f "Dockerfile" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.check-dockerfile.outputs.exists == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        if: steps.check-dockerfile.outputs.exists == 'true'
+        run: |
+          docker build -t resell-assistant:test .
+
+      - name: Test Docker image
+        if: steps.check-dockerfile.outputs.exists == 'true'
+        run: |
+          docker run --rm -d -p 8080:80 --name test-container resell-assistant:test
+          sleep 10
+          curl -f http://localhost:8080/ || exit 1
+          docker stop test-container
