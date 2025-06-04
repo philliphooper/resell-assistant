@@ -243,5 +243,199 @@ namespace Resell_Assistant.Controllers
                 return StatusCode(500, "Error retrieving deal statistics");
             }
         }
+
+        /// <summary>
+        /// Intelligent deal discovery with exact result counts and live progress
+        /// </summary>
+        [HttpPost("intelligent-discovery")]
+        public async Task<ActionResult<List<Deal>>> DiscoverIntelligentDeals([FromBody] DealDiscoverySettingsDto settings)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(ModelState);
+                }
+
+                _logger.LogInformation("Starting intelligent discovery with exact result count: {Count}", settings.ExactResultCount);
+
+                // Validate that we can potentially find the requested number of deals
+                var canFulfill = await _dealDiscoveryService.ValidateExactResultCountAsync(settings.ExactResultCount);
+                if (!canFulfill)
+                {
+                    return BadRequest($"Cannot guarantee {settings.ExactResultCount} deals with current data. Try a lower number or wait for more products to be indexed.");
+                }
+
+                var deals = await _dealDiscoveryService.DiscoverIntelligentDealsAsync(settings);
+                
+                _logger.LogInformation("Intelligent discovery completed: {ActualCount} deals found", deals.Count);
+                
+                return Ok(deals);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during intelligent deal discovery");
+                return StatusCode(500, $"Error during intelligent discovery: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Intelligent deal discovery with live progress updates via Server-Sent Events
+        /// </summary>
+        [HttpPost("intelligent-discovery-stream")]
+        public async Task DiscoverIntelligentDealsWithProgress([FromBody] DealDiscoverySettingsDto settings)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    Response.StatusCode = 400;
+                    await Response.WriteAsync("Invalid settings provided");
+                    return;
+                }                Response.Headers["Content-Type"] = "text/event-stream";
+                Response.Headers["Cache-Control"] = "no-cache";
+                Response.Headers["Connection"] = "keep-alive";
+                Response.Headers["Access-Control-Allow-Origin"] = "*";
+
+                var progress = new Progress<DiscoveryProgressDto>(async progressUpdate =>
+                {
+                    try
+                    {
+                        var json = System.Text.Json.JsonSerializer.Serialize(progressUpdate);
+                        await Response.WriteAsync($"data: {json}\n\n");
+                        await Response.Body.FlushAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to send progress update");
+                    }
+                });
+
+                _logger.LogInformation("Starting intelligent discovery stream with exact result count: {Count}", settings.ExactResultCount);
+
+                var deals = await _dealDiscoveryService.DiscoverIntelligentDealsAsync(settings, progress);
+                
+                // Send final results
+                var finalData = new { 
+                    type = "complete", 
+                    deals = deals,
+                    totalCount = deals.Count
+                };
+                var finalJson = System.Text.Json.JsonSerializer.Serialize(finalData);
+                await Response.WriteAsync($"data: {finalJson}\n\n");
+                await Response.Body.FlushAsync();
+
+                _logger.LogInformation("Intelligent discovery stream completed: {ActualCount} deals found", deals.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during intelligent deal discovery stream");
+                
+                var errorData = new { 
+                    type = "error", 
+                    message = ex.Message
+                };
+                var errorJson = System.Text.Json.JsonSerializer.Serialize(errorData);
+                await Response.WriteAsync($"data: {errorJson}\n\n");
+                await Response.Body.FlushAsync();
+            }
+        }
+
+        /// <summary>
+        /// Get comparison listings for a specific deal (transparency feature)
+        /// </summary>
+        [HttpGet("{dealId}/comparison-listings")]
+        public async Task<ActionResult<List<ComparisonListingDto>>> GetComparisonListings(int dealId)
+        {
+            try
+            {
+                if (dealId <= 0)
+                {
+                    return BadRequest("Deal ID must be a positive number");
+                }
+
+                // Get deal with comparison listings from database
+                var deal = await _marketplaceService.GetDealWithComparisonListingsAsync(dealId);
+                if (deal == null)
+                {
+                    return NotFound("Deal not found");
+                }
+
+                var comparisonListings = deal.ComparisonListings.Select(cl => new ComparisonListingDto
+                {
+                    ProductId = cl.ProductId,
+                    Title = cl.Title,
+                    Price = cl.Price,
+                    ShippingCost = cl.ShippingCost,
+                    Marketplace = cl.Marketplace,
+                    Condition = cl.Condition,
+                    Location = cl.Location,
+                    Url = cl.Url,
+                    DateListed = cl.DateListed,
+                    IsSelectedDeal = cl.IsSelectedDeal
+                }).ToList();
+
+                return Ok(comparisonListings);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting comparison listings for deal {DealId}", dealId);
+                return StatusCode(500, "Error retrieving comparison listings");
+            }
+        }
+
+        /// <summary>
+        /// Get trending products for deal discovery
+        /// </summary>
+        [HttpGet("trending-products")]
+        public async Task<ActionResult<List<Product>>> GetTrendingProducts([FromQuery] int count = 10, [FromQuery] string? searchTerms = null)
+        {
+            try
+            {
+                if (count <= 0 || count > 50)
+                {
+                    return BadRequest("Count must be between 1 and 50");
+                }
+
+                var trendingProducts = await _dealDiscoveryService.FindTrendingProductsAsync(count, searchTerms);
+                
+                return Ok(trendingProducts);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting trending products");
+                return StatusCode(500, "Error retrieving trending products");
+            }
+        }
+
+        /// <summary>
+        /// Validate if exact result count is achievable
+        /// </summary>
+        [HttpGet("validate-count/{count}")]
+        public async Task<ActionResult<object>> ValidateExactResultCount(int count)
+        {
+            try
+            {
+                if (count <= 0 || count > 100)
+                {
+                    return BadRequest("Count must be between 1 and 100");
+                }
+
+                var canFulfill = await _dealDiscoveryService.ValidateExactResultCountAsync(count);
+                
+                return Ok(new { 
+                    canFulfill = canFulfill,
+                    requestedCount = count,
+                    message = canFulfill 
+                        ? $"Can potentially find {count} deals"
+                        : $"May not be able to find {count} deals with current data"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating exact result count");
+                return StatusCode(500, "Error validating result count");
+            }
+        }
     }
 }

@@ -59,4 +59,58 @@ namespace Resell_Assistant.DTOs
         [Range(1, int.MaxValue, ErrorMessage = "Product ID must be a positive number")]
         public int ProductId { get; set; }
     }
+
+    // New DTOs for refactored deal discovery system
+    public class DealDiscoverySettingsDto
+    {
+        [Required(ErrorMessage = "Exact result count is required")]
+        [Range(1, 100, ErrorMessage = "Exact result count must be between 1 and 100")]
+        public int ExactResultCount { get; set; } = 10;
+
+        [Range(0.01, 10000.00, ErrorMessage = "Target buy price must be between $0.01 and $10,000")]
+        public decimal? TargetBuyPrice { get; set; }
+
+        [Required(ErrorMessage = "Unique product count is required")]
+        [Range(1, 50, ErrorMessage = "Unique product count must be between 1 and 50")]
+        public int UniqueProductCount { get; set; } = 5;
+
+        [Required(ErrorMessage = "Listings per product is required")]
+        [Range(1, 20, ErrorMessage = "Listings per product must be between 1 and 20")]
+        public int ListingsPerProduct { get; set; } = 5;
+
+        [MaxLength(500, ErrorMessage = "Search terms cannot exceed 500 characters")]
+        public string? SearchTerms { get; set; }
+
+        [Range(5, 100, ErrorMessage = "Minimum profit margin must be between 5% and 100%")]
+        public decimal MinProfitMargin { get; set; } = 15;
+
+        public List<string> PreferredMarketplaces { get; set; } = new() { "eBay", "Facebook Marketplace" };
+
+        public bool EnableNotifications { get; set; } = true;
+    }
+
+    public class ComparisonListingDto
+    {
+        public int ProductId { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public decimal Price { get; set; }
+        public decimal ShippingCost { get; set; }
+        public string Marketplace { get; set; } = string.Empty;
+        public string? Condition { get; set; }
+        public string? Location { get; set; }
+        public string? Url { get; set; }
+        public DateTime DateListed { get; set; }
+        public bool IsSelectedDeal { get; set; }
+    }
+
+    public class DiscoveryProgressDto
+    {
+        public string CurrentPhase { get; set; } = string.Empty;
+        public string CurrentAction { get; set; } = string.Empty;
+        public int ProductsFound { get; set; }
+        public int ListingsAnalyzed { get; set; }
+        public int DealsCreated { get; set; }
+        public int PercentComplete { get; set; }
+        public List<string> RecentFindings { get; set; } = new();
+    }
 }

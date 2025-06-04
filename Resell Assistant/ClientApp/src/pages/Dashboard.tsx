@@ -6,27 +6,33 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import DealDiscoverySettingsModal from '../components/DealDiscoverySettingsModal';
 import { apiService } from '../services/api';
 import { Deal } from '../types/api';
+import { DealDiscoverySettings, DiscoveryProgress } from '../types/settings';
 
 const Dashboard: React.FC = () => {
   const { data: deals, loading: dealsLoading, error: dealsError, refresh: refreshDeals } = useTopDeals();
   const { data: stats, loading: statsLoading, error: statsError, refresh: refreshStats } = useDashboardStats();
   const { checkHealth } = useApiHealth();
-
   // Enhanced state for deal discovery
   const [discoveringDeals, setDiscoveringDeals] = useState(false);
   const [discoveredDeals, setDiscoveredDeals] = useState<Deal[]>([]);
   const [realTimeDeals, setRealTimeDeals] = useState<Deal[]>([]);
   const [activeTab, setActiveTab] = useState<'stored' | 'discovered' | 'realtime'>('stored');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);  const [searchResults, setSearchResults] = useState<Deal[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<Deal[]>([]);
   const [discoveryError, setDiscoveryError] = useState<string | null>(null);
   const [discoverySuccess, setDiscoverySuccess] = useState<string | null>(null);
+  const [discoveryProgress, setDiscoveryProgress] = useState<DiscoveryProgress | null>(null);
   
   // Deal Discovery Settings Modal
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [dealDiscoverySettings, setDealDiscoverySettings] = useState({
+  const [dealDiscoverySettings, setDealDiscoverySettings] = useState<DealDiscoverySettings>({
+    exactResultCount: 10,
+    targetBuyPrice: undefined,
+    uniqueProductCount: 5,
+    listingsPerProduct: 5,
+    searchTerms: '',
     minProfitMargin: 15,
-    maxSearchResults: 20,
     preferredMarketplaces: ['eBay', 'Facebook Marketplace'],
     enableNotifications: true,
   });
@@ -60,43 +66,65 @@ const Dashboard: React.FC = () => {
     refreshStats();
     checkHealth(); // Also refresh the API health status
   };
-
-  // Enhanced deal discovery with better error handling and user feedback
+  // Enhanced deal discovery with intelligent discovery and live progress
   const discoverNewDeals = async () => {
     setDiscoveringDeals(true);
     setDiscoveryError(null);
     setDiscoverySuccess(null);
+    setDiscoveryProgress(null);
     
     try {
-      console.log('Starting deal discovery...');
-      const discovered = await apiService.discoverDeals(20);
-      console.log('Deal discovery completed:', discovered);
+      console.log('Starting intelligent deal discovery with settings:', dealDiscoverySettings);
       
-      setDiscoveredDeals(discovered);
-      setActiveTab('discovered');
-      
-      if (discovered.length > 0) {
-        const totalProfit = discovered.reduce((sum, deal) => sum + deal.potentialProfit, 0);
-        const avgScore = Math.round(discovered.reduce((sum, deal) => sum + deal.dealScore, 0) / discovered.length);
-        setDiscoverySuccess(
-          `Found ${discovered.length} deals! Total potential profit: ${formatCurrency(totalProfit)} (Avg score: ${avgScore}/100)`
-        );
-      } else {
-        setDiscoveryError('No profitable deals found at this time. Try again later or search for specific items.');
+      // First validate if we can fulfill the exact result count
+      const validation = await apiService.validateExactResultCount(dealDiscoverySettings.exactResultCount);
+      if (!validation.canFulfill) {
+        setDiscoveryError(`Cannot guarantee ${dealDiscoverySettings.exactResultCount} deals with current data. ${validation.message}`);
+        return;
       }
+
+      // Use Server-Sent Events for live progress updates
+      await apiService.discoverIntelligentDealsWithProgress(
+        dealDiscoverySettings,
+        (progress: DiscoveryProgress) => {
+          setDiscoveryProgress(progress);
+          console.log('Discovery progress:', progress);
+        },
+        (deals: Deal[]) => {
+          console.log('Intelligent discovery completed:', deals);
+          setDiscoveredDeals(deals);
+          setActiveTab('discovered');
+          setDiscoveryProgress(null);
+          
+          if (deals.length > 0) {
+            const totalProfit = deals.reduce((sum, deal) => sum + deal.potentialProfit, 0);
+            const avgScore = Math.round(deals.reduce((sum, deal) => sum + deal.dealScore, 0) / deals.length);
+            setDiscoverySuccess(
+              `Found exactly ${deals.length} deals! Total potential profit: ${formatCurrency(totalProfit)} (Avg score: ${avgScore}/100)`
+            );
+          } else {
+            setDiscoveryError('No profitable deals found with current settings. Try adjusting your criteria.');
+          }
+        },
+        (error: string) => {
+          console.error('Intelligent discovery failed:', error);
+          setDiscoveryError(`Discovery failed: ${error}`);
+          setDiscoveryProgress(null);
+        }
+      );
     } catch (error) {
-      console.error('Failed to discover deals:', error);
+      console.error('Failed to start intelligent discovery:', error);
       
       if (error instanceof Error) {
         if (error.message.includes('timeout') || error.message.includes('AbortError')) {
-          setDiscoveryError('Deal discovery is taking longer than expected. The process may still be running in the background. Please wait a moment and try again.');
+          setDiscoveryError('Discovery is taking longer than expected. The process may still be running in the background.');
         } else if (error.message.includes('Network Error') || error.message.includes('fetch')) {
           setDiscoveryError('Network connection issue. Please check your internet connection and try again.');
         } else {
           setDiscoveryError(`Discovery failed: ${error.message}`);
         }
       } else {
-        setDiscoveryError('An unexpected error occurred during deal discovery. Please try again.');
+        setDiscoveryError('An unexpected error occurred during discovery. Please try again.');
       }
     } finally {
       setDiscoveringDeals(false);
@@ -139,9 +167,8 @@ const Dashboard: React.FC = () => {
       default:
         return dealsLoading;
     }  };
-
   // Handle settings save
-  const handleSettingsSave = (newSettings: typeof dealDiscoverySettings) => {
+  const handleSettingsSave = (newSettings: DealDiscoverySettings) => {
     setDealDiscoverySettings(newSettings);
     // You could also persist these settings to localStorage or API here
     console.log('Deal Discovery settings updated:', newSettings);
@@ -474,10 +501,73 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
           )}
-        </div>
+        </div>        {/* Discovery Progress Display */}
+        {discoveryProgress && (
+          <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900 rounded-lg border border-blue-200 dark:border-blue-700">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-medium text-blue-900 dark:text-blue-100">
+                {discoveryProgress.currentPhase}
+              </h4>
+              <span className="text-sm text-blue-700 dark:text-blue-300">
+                {discoveryProgress.percentComplete}% Complete
+              </span>
+            </div>
+            
+            {/* Progress Bar */}
+            <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2 mb-3">
+              <div 
+                className="bg-blue-600 dark:bg-blue-400 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${discoveryProgress.percentComplete}%` }}
+              ></div>
+            </div>
+            
+            {/* Current Action */}
+            <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
+              {discoveryProgress.currentAction}
+            </p>
+            
+            {/* Progress Stats */}
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="text-center">
+                <div className="font-medium text-blue-900 dark:text-blue-100">
+                  {discoveryProgress.productsFound}
+                </div>
+                <div className="text-blue-700 dark:text-blue-300">Products Found</div>
+              </div>
+              <div className="text-center">
+                <div className="font-medium text-blue-900 dark:text-blue-100">
+                  {discoveryProgress.listingsAnalyzed}
+                </div>
+                <div className="text-blue-700 dark:text-blue-300">Listings Analyzed</div>
+              </div>
+              <div className="text-center">
+                <div className="font-medium text-blue-900 dark:text-blue-100">
+                  {discoveryProgress.dealsCreated}
+                </div>
+                <div className="text-blue-700 dark:text-blue-300">Deals Created</div>
+              </div>
+            </div>
+            
+            {/* Recent Findings */}
+            {discoveryProgress.recentFindings.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-blue-200 dark:border-blue-700">
+                <h5 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
+                  Recent Findings:
+                </h5>
+                <div className="space-y-1">
+                  {discoveryProgress.recentFindings.slice(-3).map((finding, index) => (
+                    <p key={index} className="text-xs text-blue-700 dark:text-blue-300">
+                      • {finding}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Discovery Tips */}
-        {!discoveringDeals && discoveredDeals.length === 0 && (
+        {!discoveringDeals && discoveredDeals.length === 0 && !discoveryProgress && (
           <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <h4 className="font-medium text-gray-900 dark:text-white mb-2">💡 Discovery Tips</h4>
             <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">

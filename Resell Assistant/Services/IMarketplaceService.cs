@@ -8,5 +8,6 @@ namespace Resell_Assistant.Services
         Task<List<Deal>> FindDealsAsync();
         Task<Product?> GetProductByIdAsync(int id);
         Task<List<Product>> GetRecentProductsAsync(int count = 10);
+        Task<Deal?> GetDealWithComparisonListingsAsync(int dealId);
     }
 }

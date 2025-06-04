@@ -1,4 +1,5 @@
 import { Product, Deal, PriceHistory, DashboardStats, ApiError } from '../types/api';
+import { DealDiscoverySettings, DiscoveryProgress, ComparisonListing } from '../types/settings';
 
 // Simple timeout helper - no shared state to avoid connection conflicts
 function createTimeoutSignal(timeoutMs: number): AbortSignal {
@@ -206,6 +207,120 @@ class ApiService {
     } catch {
       return false;
     }
+  }
+
+  // New intelligent discovery methods
+  async discoverIntelligentDeals(settings: DealDiscoverySettings): Promise<Deal[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/deals/intelligent-discovery`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Connection': 'close',
+        },
+        body: JSON.stringify(settings),
+        signal: this.createTimeoutSignal(60000), // 60 second timeout for intelligent discovery
+        cache: 'no-store',
+      });
+      return await this.handleResponse<Deal[]>(response);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        const timeoutError: ApiError = {
+          message: 'Intelligent discovery timed out after 60 seconds',
+          status: 408,
+          details: 'Intelligent discovery request timeout - this operation may take longer than expected'
+        };
+        throw timeoutError;
+      }
+      console.error('API discoverIntelligentDeals failed:', error);
+      throw error;
+    }
+  }
+
+  async discoverIntelligentDealsWithProgress(
+    settings: DealDiscoverySettings,
+    onProgress: (progress: DiscoveryProgress) => void,
+    onComplete: (deals: Deal[]) => void,
+    onError: (error: string) => void
+  ): Promise<void> {
+    try {
+      const response = await fetch(`${this.baseUrl}/deals/intelligent-discovery-stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+        },
+        body: JSON.stringify(settings),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('Failed to get response reader');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              if (data.type === 'progress') {
+                onProgress(data);
+              } else if (data.type === 'complete') {
+                onComplete(data.deals);
+                return;
+              } else if (data.type === 'error') {
+                onError(data.message);
+                return;
+              } else {
+                // Regular progress update (backward compatibility)
+                onProgress(data);
+              }
+            } catch (e) {
+              console.warn('Failed to parse SSE data:', line);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('API discoverIntelligentDealsWithProgress failed:', error);
+      onError(error instanceof Error ? error.message : 'Unknown error occurred');
+    }
+  }
+
+  async getComparisonListings(dealId: number): Promise<ComparisonListing[]> {
+    return this.get<ComparisonListing[]>(`/deals/${dealId}/comparison-listings`);
+  }
+
+  async getTrendingProducts(count: number = 10, searchTerms?: string): Promise<Product[]> {
+    const params = new URLSearchParams({ count: count.toString() });
+    if (searchTerms) {
+      params.append('searchTerms', searchTerms);
+    }
+    return this.get<Product[]>(`/deals/trending-products?${params.toString()}`);
+  }
+
+  async validateExactResultCount(count: number): Promise<{ 
+    canFulfill: boolean; 
+    requestedCount: number; 
+    message: string; 
+  }> {
+    return this.get(`/deals/validate-count/${count}`);
   }
 }
 

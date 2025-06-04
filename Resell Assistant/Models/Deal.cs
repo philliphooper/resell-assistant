@@ -33,5 +33,14 @@ namespace Resell_Assistant.Models
         
         // Navigation property
         public virtual Product? Product { get; set; }
+        
+        // New properties for refactored deal discovery
+        public virtual ICollection<ComparisonListing> ComparisonListings { get; set; } = new List<ComparisonListing>();
+        
+        [Range(1, 50, ErrorMessage = "Total listings analyzed must be between 1 and 50")]
+        public int TotalListingsAnalyzed { get; set; }
+        
+        [MaxLength(2000, ErrorMessage = "Discovery method cannot exceed 2000 characters")]
+        public string? DiscoveryMethod { get; set; }
     }
 }

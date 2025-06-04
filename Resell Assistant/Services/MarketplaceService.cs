@@ -117,14 +117,20 @@ namespace Resell_Assistant.Services
         public async Task<Product?> GetProductByIdAsync(int id)
         {
             return await _context.Products.FindAsync(id);
-        }
-
-        public async Task<List<Product>> GetRecentProductsAsync(int count = 10)
+        }        public async Task<List<Product>> GetRecentProductsAsync(int count = 10)
         {
             return await _context.Products
                 .OrderByDescending(p => p.CreatedAt)
                 .Take(count)
                 .ToListAsync();
+        }
+
+        public async Task<Deal?> GetDealWithComparisonListingsAsync(int dealId)
+        {
+            return await _context.Deals
+                .Include(d => d.Product)
+                .Include(d => d.ComparisonListings)
+                .FirstOrDefaultAsync(d => d.Id == dealId);
         }
     }
 }

@@ -6,10 +6,9 @@ namespace Resell_Assistant.Data
 {
     public class ApplicationDbContext : DbContext
     {
-        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
-
-        public DbSet<Product> Products { get; set; }
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }        public DbSet<Product> Products { get; set; }
         public DbSet<Deal> Deals { get; set; }
+        public DbSet<ComparisonListing> ComparisonListings { get; set; }
         public DbSet<PriceHistory> PriceHistories { get; set; }
         public DbSet<SearchAlert> SearchAlerts { get; set; }
         public DbSet<UserPortfolio> UserPortfolios { get; set; }
@@ -22,9 +21,9 @@ namespace Resell_Assistant.Data
         }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            base.OnModelCreating(modelBuilder);            ConfigureProduct(modelBuilder);
+        {            base.OnModelCreating(modelBuilder);            ConfigureProduct(modelBuilder);
             ConfigureDeal(modelBuilder);
+            ConfigureComparisonListing(modelBuilder);
             ConfigurePriceHistory(modelBuilder);
             ConfigureSearchAlert(modelBuilder);
             ConfigureUserPortfolio(modelBuilder);
@@ -51,9 +50,7 @@ namespace Resell_Assistant.Data
                 entity.HasIndex(e => e.Price);
                 entity.HasIndex(e => e.CreatedAt);
             });
-        }
-
-        private void ConfigureDeal(ModelBuilder modelBuilder)
+        }        private void ConfigureDeal(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<Deal>(entity =>
             {
@@ -61,7 +58,10 @@ namespace Resell_Assistant.Data
                 entity.Property(e => e.ProductId).IsRequired();
                 entity.Property(e => e.PotentialProfit).HasColumnType("decimal(18,2)");
                 entity.Property(e => e.EstimatedSellPrice).HasColumnType("decimal(18,2)");
-                entity.Property(e => e.DealScore).IsRequired();                entity.Property(e => e.Confidence).IsRequired();
+                entity.Property(e => e.DealScore).IsRequired();
+                entity.Property(e => e.Confidence).IsRequired();
+                entity.Property(e => e.TotalListingsAnalyzed).IsRequired();
+                entity.Property(e => e.DiscoveryMethod).HasMaxLength(2000);
                 entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
                 entity.HasOne(e => e.Product)
@@ -69,11 +69,56 @@ namespace Resell_Assistant.Data
                     .HasForeignKey(e => e.ProductId)
                     .OnDelete(DeleteBehavior.Cascade);
 
+                entity.HasMany(e => e.ComparisonListings)
+                    .WithOne(cl => cl.Deal)
+                    .HasForeignKey(cl => cl.DealId)
+                    .OnDelete(DeleteBehavior.Cascade);
                 entity.HasIndex(e => e.ProductId);
                 entity.HasIndex(e => e.DealScore);
                 entity.HasIndex(e => e.CreatedAt);
             });
-        }        private void ConfigurePriceHistory(ModelBuilder modelBuilder)
+        }
+
+        private void ConfigureComparisonListing(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<ComparisonListing>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.DealId).IsRequired();
+                entity.Property(e => e.ProductId).IsRequired();
+                entity.Property(e => e.Title).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.Price).HasColumnType("decimal(18,2)").IsRequired();
+                entity.Property(e => e.ShippingCost).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.Marketplace).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Condition).HasMaxLength(50);
+                entity.Property(e => e.Location).HasMaxLength(200);
+                entity.Property(e => e.Url).HasMaxLength(1000);
+                entity.Property(e => e.ImageUrl).HasMaxLength(1000);
+                entity.Property(e => e.IsSelectedDeal).IsRequired();
+                entity.Property(e => e.RankingPosition).IsRequired();
+                entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                entity.HasOne(e => e.Deal)
+                    .WithMany(d => d.ComparisonListings)
+                    .HasForeignKey(e => e.DealId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(e => e.Product)
+                    .WithMany()
+                    .HasForeignKey(e => e.ProductId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(e => e.DealId);
+                entity.HasIndex(e => e.ProductId);
+                entity.HasIndex(e => e.Marketplace);
+                entity.HasIndex(e => e.Price);
+                entity.HasIndex(e => e.IsSelectedDeal);
+                entity.HasIndex(e => e.RankingPosition);
+                entity.HasIndex(e => e.CreatedAt);
+            });
+        }
+
+        private void ConfigurePriceHistory(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<PriceHistory>(entity =>
             {

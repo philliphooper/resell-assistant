@@ -21,6 +21,8 @@ The frontend is built with React and the backend is a .NET Web API. To start eac
 - Avoid creating new .md files; instead, use the existing `README.md` and `SETUP.md` files, and write to GitHub (e.g. issues) for instructions and documentation.
 - When starting a server (frontend or backend), ensure it is not already running to avoid port conflicts.
 - When setting labels for GitHub issues, first verify the labels exist in the repository. If not, create them using the GitHub CLI.
+- Never create synthetic, test, or fake data. Always use real live data from marketplace APIs when discovering deals or doing price analysis.
+- Price, listing, and deal data should always come from live marketplace queries. Never use the database. The database should be used for storing credentials, settings, preferences, etc...
 
 ## Testing
 - A `tests/` directory should be used for any test scripts. Stay organized and cleanup after yourself.
