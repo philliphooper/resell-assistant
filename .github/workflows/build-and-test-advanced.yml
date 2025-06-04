@@ -112,7 +112,7 @@ jobs:
 
       - name: Run tests
         run: |
-          dotnet test "${{ env.TEST_PROJECT_PATH }}" \
+          dotnet test "${{ env.SOLUTION_PATH }}" \
             --configuration Release \
             --no-build \
             --verbosity normal \
@@ -125,16 +125,15 @@ jobs:
           name: test-results-${{ matrix.os }}-node${{ matrix.node-version }}
           path: |
             **/test-results-*.trx
-
   # Integration tests with database
   integration-tests:
     runs-on: ubuntu-latest
     
-    services:
-      sqlite:
-        # Use a simple container for any database setup if needed
-        image: busybox
-        options: --health-cmd "echo 'healthy'" --health-interval 10s --health-timeout 5s --health-retries 3
+    # Remove the problematic busybox service - SQLite doesn't need a separate container
+    # services:
+    #   sqlite:
+    #     image: busybox
+    #     options: --health-cmd "echo 'healthy'" --health-interval 10s --health-timeout 5s --health-retries 3
     
     steps:
       - name: Checkout repository
@@ -179,7 +178,7 @@ jobs:
           ASPNETCORE_ENVIRONMENT: Testing
           ConnectionStrings__DefaultConnection: "Data Source=./test-db/test.db"
         run: |
-          dotnet test "${{ env.TEST_PROJECT_PATH }}" \
+          dotnet test "${{ env.SOLUTION_PATH }}" \
             --configuration Release \
             --no-build \
             --verbosity normal \

@@ -78,14 +78,14 @@ jobs:
             --verbosity normal \
             --logger "trx;LogFileName=release-test-results.trx" \
             --collect:"XPlat Code Coverage" \
-            --results-directory ./TestResults
-
-      - name: Publish application
+            --results-directory ./TestResults      - name: Publish application
         run: |
           dotnet publish "${{ env.MAIN_PROJECT_PATH }}" \
             --configuration Release \
             --output ./publish \
             --no-restore \
+            --runtime linux-x64 \
+            --self-contained false \
             -p:Version=${{ steps.version.outputs.version }} \
             -p:PublishReadyToRun=true \
             -p:PublishSingleFile=false
