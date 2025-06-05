@@ -545,9 +545,8 @@ const Dashboard: React.FC = () => {
                 <div className="text-blue-700 dark:text-blue-300">Deals Created</div>
               </div>
             </div>
-            
-            {/* Recent Findings */}
-            {discoveryProgress.recentFindings.length > 0 && (
+              {/* Recent Findings */}
+            {discoveryProgress.recentFindings && discoveryProgress.recentFindings.length > 0 && (
               <div className="mt-3 pt-3 border-t border-blue-200 dark:border-blue-700">
                 <h5 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
                   Recent Findings:
@@ -613,8 +612,7 @@ const Dashboard: React.FC = () => {
                 </div>
               </div>
             ))}
-          </div>
-          {stats.recentDeals.length > 3 && (
+          </div>          {stats.recentDeals && stats.recentDeals.length > 3 && (
             <div className="mt-4 text-center">
               <span className="text-sm text-gray-600 dark:text-gray-400">
                 +{stats.recentDeals.length - 3} more recent deals

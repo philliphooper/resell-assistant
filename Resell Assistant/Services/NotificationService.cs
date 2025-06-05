@@ -6,18 +6,17 @@ namespace Resell_Assistant.Services
 {
     public class NotificationService : INotificationService
     {
-        private readonly ApplicationDbContext _context;
+        private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
         private readonly IConfiguration _configuration;
 
-        public NotificationService(ApplicationDbContext context, IConfiguration configuration)
+        public NotificationService(IDbContextFactory<ApplicationDbContext> contextFactory, IConfiguration configuration)
         {
-            _context = context;
+            _contextFactory = contextFactory;
             _configuration = configuration;
-        }
-
-        public async Task SendDealAlertAsync(Deal deal, SearchAlert alert)
+        }        public async Task SendDealAlertAsync(Deal deal, SearchAlert alert)
         {
-            var product = await _context.Products.FindAsync(deal.ProductId);
+            using var context = await _contextFactory.CreateDbContextAsync();
+            var product = await context.Products.FindAsync(deal.ProductId);
             if (product == null) return;
 
             var subject = $"Deal Alert: {product.Title}";
@@ -41,8 +40,8 @@ namespace Resell_Assistant.Services
             
             // Update alert last triggered time
             alert.LastTriggered = DateTime.UtcNow;
-            _context.SearchAlerts.Update(alert);
-            await _context.SaveChangesAsync();
+            context.SearchAlerts.Update(alert);
+            await context.SaveChangesAsync();
         }
 
         public async Task SendEmailAsync(string to, string subject, string body)
@@ -81,37 +80,39 @@ namespace Resell_Assistant.Services
                     Console.WriteLine($"Error processing alert {alert.Id}: {ex.Message}");
                 }
             }
-        }
-
-        public async Task<List<SearchAlert>> GetActiveAlertsAsync()
+        }        public async Task<List<SearchAlert>> GetActiveAlertsAsync()
         {
-            return await _context.SearchAlerts
+            using var context = _contextFactory.CreateDbContext();
+            return await context.SearchAlerts
                 .Where(a => a.IsActive)
                 .ToListAsync();
         }
 
         public async Task CreateAlertAsync(SearchAlert alert)
         {
+            using var context = _contextFactory.CreateDbContext();
             alert.CreatedAt = DateTime.UtcNow;
-            _context.SearchAlerts.Add(alert);
-            await _context.SaveChangesAsync();
+            context.SearchAlerts.Add(alert);
+            await context.SaveChangesAsync();
         }
 
         public async Task UpdateAlertAsync(SearchAlert alert)
         {
-            _context.SearchAlerts.Update(alert);
-            await _context.SaveChangesAsync();
+            using var context = _contextFactory.CreateDbContext();
+            context.SearchAlerts.Update(alert);
+            await context.SaveChangesAsync();
         }
 
         public async Task DeleteAlertAsync(int alertId)
         {
-            var alert = await _context.SearchAlerts.FindAsync(alertId);
+            using var context = _contextFactory.CreateDbContext();
+            var alert = await context.SearchAlerts.FindAsync(alertId);
             if (alert != null)
             {
-                _context.SearchAlerts.Remove(alert);
-                await _context.SaveChangesAsync();
+                context.SearchAlerts.Remove(alert);
+                await context.SaveChangesAsync();
             }
-        }        private Task<bool> MeetsAlertCriteria(Product product, SearchAlert alert)
+        }private Task<bool> MeetsAlertCriteria(Product product, SearchAlert alert)
         {
             // Check max price constraint
             if (alert.MaxPrice.HasValue && product.Price > alert.MaxPrice.Value)

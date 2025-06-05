@@ -6,11 +6,11 @@ namespace Resell_Assistant.Services
 {
     public class PriceAnalysisService : IPriceAnalysisService
     {
-        private readonly ApplicationDbContext _context;
+        private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
 
-        public PriceAnalysisService(ApplicationDbContext context)
+        public PriceAnalysisService(IDbContextFactory<ApplicationDbContext> contextFactory)
         {
-            _context = context;
+            _contextFactory = contextFactory;
         }
 
         public async Task<Deal> AnalyzeProductAsync(Product product)
@@ -118,10 +118,9 @@ namespace Resell_Assistant.Services
             score += GetDemandScore(product);
 
             return Task.FromResult(Math.Min(score, 100)); // Cap at 100
-        }
-
-        public async Task AddPriceHistoryAsync(int productId, decimal price, string marketplace)
+        }        public async Task AddPriceHistoryAsync(int productId, decimal price, string marketplace)
         {
+            using var context = _contextFactory.CreateDbContext();
             var priceHistory = new PriceHistory
             {
                 ProductId = productId,
@@ -130,13 +129,14 @@ namespace Resell_Assistant.Services
                 RecordedAt = DateTime.UtcNow
             };
 
-            _context.PriceHistories.Add(priceHistory);
-            await _context.SaveChangesAsync();
+            context.PriceHistories.Add(priceHistory);
+            await context.SaveChangesAsync();
         }
 
         public async Task<List<PriceHistory>> GetPriceHistoryAsync(int productId)
         {
-            return await _context.PriceHistories
+            using var context = _contextFactory.CreateDbContext();
+            return await context.PriceHistories
                 .Where(p => p.ProductId == productId)
                 .OrderByDescending(p => p.RecordedAt)
                 .ToListAsync();
@@ -234,9 +234,7 @@ namespace Resell_Assistant.Services
                 reasons.Add("Good deal score with solid profit potential");
             
             return string.Join(". ", reasons);
-        }
-
-        private async Task<List<Product>> FindSimilarProductsAsync(Product product)
+        }        private async Task<List<Product>> FindSimilarProductsAsync(Product product)
         {
             var keywords = ExtractKeywords(product.Title);
             var primaryKeywords = keywords.Take(3).ToList();
@@ -247,7 +245,8 @@ namespace Resell_Assistant.Services
             var searchTerms = string.Join(" ", primaryKeywords);
             
             // Search for similar products in database
-            var similarProducts = await _context.Products
+            using var context = _contextFactory.CreateDbContext();
+            var similarProducts = await context.Products
                 .Where(p => p.Id != product.Id && 
                            p.Title.ToLower().Contains(searchTerms.ToLower()))
                 .Where(p => p.CreatedAt > DateTime.UtcNow.AddDays(-90)) // Recent listings only

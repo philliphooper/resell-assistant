@@ -3,6 +3,7 @@ using Resell_Assistant.Data;
 using Resell_Assistant.Models;
 using Resell_Assistant.DTOs;
 using Resell_Assistant.Services.External;
+using System.Threading;
 
 namespace Resell_Assistant.Services
 {    public interface IDealDiscoveryService
@@ -17,7 +18,7 @@ namespace Resell_Assistant.Services
         Task<List<Deal>> DiscoverIntelligentDealsAsync(DealDiscoverySettingsDto settings, IProgress<DiscoveryProgressDto>? progress = null);
         Task<List<Product>> FindTrendingProductsAsync(int count, string? searchTerms = null);
         Task<List<ComparisonListing>> FindListingsForProductAsync(Product product, int maxListings, List<string> marketplaces);
-        Task<Deal> CreateDealFromListingsAsync(List<ComparisonListing> listings, DealDiscoverySettingsDto settings);
+        Deal CreateDealFromListingsAsync(List<ComparisonListing> listings, DealDiscoverySettingsDto settings);
         Task<bool> ValidateExactResultCountAsync(int requestedCount);
     }
 
@@ -262,7 +263,7 @@ namespace Resell_Assistant.Services
                     
                     if (listings.Count >= 2) // Need at least 2 listings for comparison
                     {
-                        var deal = await CreateDealFromListingsAsync(listings, settings);
+                        var deal = CreateDealFromListingsAsync(listings, settings);
                         if (deal != null && deal.PotentialProfit > 0)
                         {
                             deals.Add(deal);
@@ -411,9 +412,7 @@ namespace Resell_Assistant.Services
             }
 
             return listings.OrderBy(l => l.Price + l.ShippingCost).Take(maxListings).ToList();
-        }
-
-        public async Task<Deal> CreateDealFromListingsAsync(List<ComparisonListing> listings, DealDiscoverySettingsDto settings)
+        }        public Deal CreateDealFromListingsAsync(List<ComparisonListing> listings, DealDiscoverySettingsDto settings)
         {
             if (!listings.Any())
                 throw new ArgumentException("Cannot create deal without listings");
@@ -450,14 +449,14 @@ namespace Resell_Assistant.Services
                            $"Analysis based on {listings.Count} comparable listings.",
                 CreatedAt = DateTime.UtcNow,
                 ComparisonListings = listings,
-                Id = Guid.NewGuid().ToString() // Generate unique ID for in-memory deal
+                Id = GenerateInMemoryDealId() // Generate unique int ID for in-memory deal
             };
 
             _logger.LogInformation("Created in-memory deal with score {DealScore} and potential profit ${PotentialProfit:F2}", 
                 deal.DealScore, deal.PotentialProfit);
 
             return deal;
-        }        public async Task<bool> ValidateExactResultCountAsync(int requestedCount)
+        }public async Task<bool> ValidateExactResultCountAsync(int requestedCount)
         {
             // Validate based on marketplace API availability rather than database content
             // Since we're using real-time APIs, we can potentially fulfill most reasonable requests
@@ -726,7 +725,7 @@ namespace Resell_Assistant.Services
                 
                 if (listings.Count >= 2)
                 {
-                    var deal = await CreateDealFromListingsAsync(listings, expandedSettings);
+                    var deal = CreateDealFromListingsAsync(listings, expandedSettings);
                     if (deal != null && deal.PotentialProfit > 0)
                     {
                         currentDeals.Add(deal);
@@ -809,9 +808,7 @@ namespace Resell_Assistant.Services
             if (profitMargin > 100) score += 5;
             
             return Math.Min(100, Math.Max(0, score));
-        }
-
-        private int CalculateConfidence(int listingCount, int marketplaceDiversity)
+        }        private int CalculateConfidence(int listingCount, int marketplaceDiversity)
         {
             var confidence = 50; // Base confidence
             
@@ -824,20 +821,12 @@ namespace Resell_Assistant.Services
             return Math.Min(100, Math.Max(0, confidence));
         }
 
-        private async Task<Product> GetOrCreateProductAsync(ComparisonListing listing)
+        private Product CreateProductFromListing(ComparisonListing listing)
         {
-            // Try to find existing product by normalized title and marketplace
-            var normalizedTitle = NormalizeProductTitle(listing.Title);
-            
-            var existingProduct = await _context.Products
-                .FirstOrDefaultAsync(p => p.Title == listing.Title && p.Marketplace == listing.Marketplace);
-
-            if (existingProduct != null)
-                return existingProduct;
-
-            // Create new product
-            var newProduct = new Product
+            // Create in-memory product from listing data (no database persistence)
+            return new Product
             {
+                Id = GenerateInMemoryProductId(),
                 Title = listing.Title,
                 Price = listing.Price,
                 ShippingCost = listing.ShippingCost,
@@ -846,29 +835,20 @@ namespace Resell_Assistant.Services
                 Location = listing.Location,
                 Url = listing.Url,
                 ImageUrl = listing.ImageUrl,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                IsExternalListing = true // Mark as external since it comes from marketplace APIs
             };
-
-            _context.Products.Add(newProduct);
-            await _context.SaveChangesAsync();
-            
-            return newProduct;
         }
 
-        private async Task SaveDealWithComparisonListingsAsync(Deal deal)
+        private static int _nextDealId = 1000000; // Start from 1M to avoid conflicts with database IDs
+        private static int _nextProductId = 2000000; // Start from 2M to avoid conflicts with database IDs
+
+        private int GenerateInMemoryDealId()
         {
-            // Add the deal to context
-            _context.Deals.Add(deal);
-            await _context.SaveChangesAsync();
-
-            // Update comparison listings with the deal ID
-            foreach (var listing in deal.ComparisonListings)
-            {
-                listing.DealId = deal.Id;
-                _context.ComparisonListings.Add(listing);
-            }
-
-            await _context.SaveChangesAsync();
+            return Interlocked.Increment(ref _nextDealId);
+        }        private int GenerateInMemoryProductId()
+        {
+            return Interlocked.Increment(ref _nextProductId);
         }
     }
 }

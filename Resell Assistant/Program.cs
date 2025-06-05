@@ -15,13 +15,23 @@ builder.Services.AddControllersWithViews(options =>
     options.Filters.Add<ValidateModelStateAttribute>();
 });
 
-// Add Entity Framework with proper threading configuration
+// Add Entity Framework with DbContextFactory for concurrent operations
+builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
+{
+    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection"));
+    options.EnableSensitiveDataLogging(false);
+    options.EnableServiceProviderCaching(true);
+    options.EnableThreadSafetyChecks(true);
+});
+
+// Also register traditional DbContext for services that need a single instance
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection"));
-    options.EnableThreadSafetyChecks(false); // Disable for performance but we'll handle manually
-    options.EnableServiceProviderCaching(false); // Prevent caching issues with scoped services
-});
+    options.EnableSensitiveDataLogging(false);
+    options.EnableServiceProviderCaching(true);
+    options.EnableThreadSafetyChecks(true);
+}, ServiceLifetime.Scoped);
 
 // Register application services
 builder.Services.AddScoped<IMarketplaceService, MarketplaceService>();

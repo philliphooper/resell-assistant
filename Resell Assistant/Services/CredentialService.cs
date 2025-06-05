@@ -12,24 +12,22 @@ namespace Resell_Assistant.Services
         Task<bool> DeleteCredentialsAsync(string service);
         Task<(string encryptedValue, string decryptedValue)> TestEncryptionAsync(string testValue);
     }
-    
-    public class CredentialService : ICredentialService
+      public class CredentialService : ICredentialService
     {
-        private readonly ApplicationDbContext _context;
+        private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
         private readonly IEncryptionService _encryptionService;
         private readonly ILogger<CredentialService> _logger;
         
         public CredentialService(
-            ApplicationDbContext context,
+            IDbContextFactory<ApplicationDbContext> contextFactory,
             IEncryptionService encryptionService,
             ILogger<CredentialService> logger)
         {
-            _context = context;
+            _contextFactory = contextFactory;
             _encryptionService = encryptionService;
             _logger = logger;
         }
-        
-        public async Task<bool> SaveCredentialsAsync(string service, string clientId, string clientSecret, string environment = "production")
+          public async Task<bool> SaveCredentialsAsync(string service, string clientId, string clientSecret, string environment = "production")
         {
             try
             {
@@ -39,8 +37,10 @@ namespace Resell_Assistant.Services
                 var encryptedClientId = _encryptionService.Encrypt(clientId);
                 var encryptedClientSecret = _encryptionService.Encrypt(clientSecret);
                 
+                using var context = await _contextFactory.CreateDbContextAsync();
+                
                 // Find existing credentials or create new
-                var existingCredentials = await _context.ApiCredentials
+                var existingCredentials = await context.ApiCredentials
                     .FirstOrDefaultAsync(c => c.Service == service);
                 
                 if (existingCredentials != null)
@@ -64,10 +64,10 @@ namespace Resell_Assistant.Services
                         IsActive = true
                     };
                     
-                    _context.ApiCredentials.Add(credentials);
+                    context.ApiCredentials.Add(credentials);
                 }
                 
-                await _context.SaveChangesAsync();
+                await context.SaveChangesAsync();
                 _logger.LogInformation("Successfully saved credentials for service: {Service}", service);
                 return true;
             }
@@ -80,7 +80,9 @@ namespace Resell_Assistant.Services
         {
             try
             {
-                var credentials = await _context.ApiCredentials
+                using var context = await _contextFactory.CreateDbContextAsync();
+                
+                var credentials = await context.ApiCredentials
                     .FirstOrDefaultAsync(c => c.Service == service && c.IsActive);
                 
                 if (credentials == null)
@@ -105,12 +107,13 @@ namespace Resell_Assistant.Services
                 return (string.Empty, string.Empty);
             }
         }
-        
-        public async Task<bool> HasCredentialsAsync(string service)
+          public async Task<bool> HasCredentialsAsync(string service)
         {
             try
             {
-                return await _context.ApiCredentials
+                using var context = await _contextFactory.CreateDbContextAsync();
+                
+                return await context.ApiCredentials
                     .AnyAsync(c => c.Service == service && c.IsActive);
             }
             catch (Exception ex)
@@ -119,12 +122,13 @@ namespace Resell_Assistant.Services
                 return false;
             }
         }
-        
-        public async Task<ApiCredentialsResponse> GetCredentialStatusAsync(string service)
+          public async Task<ApiCredentialsResponse> GetCredentialStatusAsync(string service)
         {
             try
             {
-                var credentials = await _context.ApiCredentials
+                using var context = await _contextFactory.CreateDbContextAsync();
+                
+                var credentials = await context.ApiCredentials
                     .FirstOrDefaultAsync(c => c.Service == service && c.IsActive);
                 
                 return new ApiCredentialsResponse
@@ -148,17 +152,18 @@ namespace Resell_Assistant.Services
         }
         
         public async Task<bool> DeleteCredentialsAsync(string service)
-        {
-            try
+        {            try
             {
-                var credentials = await _context.ApiCredentials
+                using var context = await _contextFactory.CreateDbContextAsync();
+                
+                var credentials = await context.ApiCredentials
                     .FirstOrDefaultAsync(c => c.Service == service);
                 
                 if (credentials != null)
                 {
                     credentials.IsActive = false;
                     credentials.UpdatedAt = DateTime.UtcNow;
-                    await _context.SaveChangesAsync();
+                    await context.SaveChangesAsync();
                 }
                 
                 _logger.LogInformation("Successfully deleted credentials for service: {Service}", service);

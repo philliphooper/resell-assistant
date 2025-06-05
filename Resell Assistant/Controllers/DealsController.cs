@@ -286,17 +286,20 @@ namespace Resell_Assistant.Controllers
         public async Task DiscoverIntelligentDealsWithProgress([FromBody] DealDiscoverySettingsDto settings)
         {
             try
-            {
-                if (!ModelState.IsValid)
+            {                if (!ModelState.IsValid)
                 {
                     Response.StatusCode = 400;
                     await Response.WriteAsync("Invalid settings provided");
                     return;
-                }                Response.Headers["Content-Type"] = "text/event-stream";
+                }
+
+                // Start the response early to prevent TempData conflicts with SSE
+                Response.Headers["Content-Type"] = "text/event-stream";
                 Response.Headers["Cache-Control"] = "no-cache";
                 Response.Headers["Connection"] = "keep-alive";
                 Response.Headers["Access-Control-Allow-Origin"] = "*";
-
+                
+                await Response.StartAsync(); // This prevents TempData from interfering
                 var progress = new Progress<DiscoveryProgressDto>(async progressUpdate =>
                 {
                     try
@@ -304,6 +307,14 @@ namespace Resell_Assistant.Controllers
                         var json = System.Text.Json.JsonSerializer.Serialize(progressUpdate);
                         await Response.WriteAsync($"data: {json}\n\n");
                         await Response.Body.FlushAsync();
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // Client disconnected, ignore
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // Response already completed, ignore
                     }
                     catch (Exception ex)
                     {
